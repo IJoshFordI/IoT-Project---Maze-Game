@@ -1,0 +1,85 @@
+"""A simple arcade-style maze background made with Pygame."""
+
+import pygame
+
+
+WINDOW_WIDTH = 800
+WINDOW_HEIGHT = 600
+CELL_SIZE = 25
+
+BLACK = (5, 5, 15)
+MAZE_BLUE = (35, 80, 255)
+DOT = (255, 230, 170)
+
+
+# # is a wall, . is a pellet, and spaces are empty paths.
+MAZE = [
+    "###############################",
+    "#.............#...............#",
+    "#.#####.#####.#.#####.#####.#.#",
+    "#.#   #.#   #.#.#   #.#   #.#.#",
+    "#.#####.#####. .#####.#####.#.#",
+    "#.............................#",
+    "#.#####.#.#########.#.#####..#",
+    "#.#####.#.....#.....#.#####..#",
+    "#.......##### # #####....... #",
+    "#######.#     #     #.#######",
+    "      #.#  ##   ##  #.#      ",
+    "#######.#  #       #.#.######",
+    "        .  #       #.        ",
+    "#######.#  #       #.#.######",
+    "      #.#  #########.#      ",
+    "#######.#     ...     .######",
+    "#........#####.#####........#",
+    "#.#####.#...........#.#####.#",
+    "#.#####.#.#########.#.#####.#",
+    "#...#...................#...#",
+    "###.#.#.#####.#####.#.#.#.###",
+    "#.....#.....#.#.....#.....#.#",
+    "#.#########.#.#.#########.#.#",
+    "#.............................#",
+    "###############################",
+]
+
+
+def draw_maze(screen):
+    """Draw the maze walls and pellets, centred in the game window."""
+    maze_width = max(len(row) for row in MAZE) * CELL_SIZE
+    maze_height = len(MAZE) * CELL_SIZE
+    offset_x = (WINDOW_WIDTH - maze_width) // 2
+    offset_y = (WINDOW_HEIGHT - maze_height) // 2
+
+    screen.fill(BLACK)
+
+    for row, line in enumerate(MAZE):
+        for column, tile in enumerate(line):
+            x = offset_x + column * CELL_SIZE
+            y = offset_y + row * CELL_SIZE
+
+            if tile == "#":
+                pygame.draw.rect(screen, MAZE_BLUE, (x, y, CELL_SIZE, CELL_SIZE), border_radius=6)
+            elif tile == ".":
+                pygame.draw.circle(screen, DOT, (x + CELL_SIZE // 2, y + CELL_SIZE // 2), 3)
+
+
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    pygame.display.set_caption("Arcade Maze")
+    clock = pygame.time.Clock()
+    running = True
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+        draw_maze(screen)
+        pygame.display.flip()
+        clock.tick(60)
+
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    main()
