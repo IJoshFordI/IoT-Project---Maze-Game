@@ -4,7 +4,7 @@ import pygame
 
 
 WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 600
+WINDOW_HEIGHT = 600 
 CELL_SIZE = 25
 
 BLACK = (5, 5, 15)
@@ -12,7 +12,7 @@ MAZE_BLUE = (35, 80, 255)
 DOT = (255, 230, 170)
 
 
-# # is a wall, . is a pellet, and spaces are empty paths.
+# # is a wall, . is a pellet, and spaces are empty paths. open paths
 MAZE = [
     "###############################",
     "#.............#...............#",
