@@ -6,40 +6,61 @@ import pygame
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600 
 CELL_SIZE = 25
+WALL_INSET = 4
 
 BLACK = (5, 5, 15)
 MAZE_BLUE = (35, 80, 255)
 DOT = (255, 230, 170)
 
 
-# # is a wall, . is a pellet, and spaces are empty paths. open paths
+# # is a wall, . is a pellet, and spaces are empty paths.
 MAZE = [
     "###############################",
-    "#.............#...............#",
-    "#.#####.#####.#.#####.#####.#.#",
-    "#.#   #.#   #.#.#   #.#   #.#.#",
-    "#.#####.#####. .#####.#####.#.#",
-    "#.............................#",
-    "#.#####.#.#########.#.#####..#",
-    "#.#####.#.....#.....#.#####..#",
-    "#.......##### # #####....... #",
-    "#######.#     #     #.#######",
-    "      #.#  ##   ##  #.#      ",
-    "#######.#  #       #.#.######",
-    "        .  #       #.        ",
-    "#######.#  #       #.#.######",
-    "      #.#  #########.#      ",
-    "#######.#     ...     .######",
-    "#........#####.#####........#",
-    "#.#####.#...........#.#####.#",
-    "#.#####.#.#########.#.#####.#",
-    "#...#...................#...#",
-    "###.#.#.#####.#####.#.#.#.###",
-    "#.....#.....#.#.....#.....#.#",
-    "#.#########.#.#.#########.#.#",
-    "#.............................#",
-    "###############################",
+    "#                        #   ##",
+    "# #####################    #  #",
+    "#   #                 # #######",
+    "# # #   # # ####    # # # ### #",
+    "# # #   # # ####    # # # ### #",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
 ]
+
+maze_width = max(len(row) for row in MAZE)
+maze_tiles = [list(row.ljust(maze_width, "#")) for row in MAZE]
+for row_index, row in enumerate(maze_tiles):
+    row[0] = "#"
+    row[-1] = "#"
+    if row_index in (0, len(maze_tiles) - 1):
+        row[:] = ["#"] * maze_width
+
+center_row = len(maze_tiles) // 2
+center_column = maze_width // 2
+for row_index in range(center_row - 2, center_row + 3):
+    for column in range(center_column - 2, center_column + 3):
+        maze_tiles[row_index][column] = "#"
+for row_index in range(center_row - 1, center_row + 2):
+    for column in range(center_column - 1, center_column + 2):
+        maze_tiles[row_index][column] = " "
+maze_tiles[center_row - 2][center_column] = " "
+maze_tiles[center_row - 3][center_column] = " "
+MAZE = ["".join(row) for row in maze_tiles]
 
 
 def draw_maze(screen):
@@ -57,7 +78,12 @@ def draw_maze(screen):
             y = offset_y + row * CELL_SIZE
 
             if tile == "#":
-                pygame.draw.rect(screen, MAZE_BLUE, (x, y, CELL_SIZE, CELL_SIZE), border_radius=6)
+                pygame.draw.rect(
+                    screen,
+                    MAZE_BLUE,
+                    (x + WALL_INSET, y + WALL_INSET, CELL_SIZE - 2 * WALL_INSET, CELL_SIZE - 2 * WALL_INSET),
+                    border_radius=3,
+                )
             elif tile == ".":
                 pygame.draw.circle(screen, DOT, (x + CELL_SIZE // 2, y + CELL_SIZE // 2), 3)
 
