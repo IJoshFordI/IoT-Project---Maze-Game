@@ -3,14 +3,27 @@
 import pygame
 
 
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 600 
 CELL_SIZE = 25
-WALL_INSET = 4
+WALL_INSET = 0
 
-BLACK = (5, 5, 15)
-MAZE_BLUE = (35, 80, 255)
+CAVE_FLOOR = (14, 17, 20)
+FLOOR_FLECKS = ((22, 25, 27), (27, 28, 27), (19, 23, 25))
+STONE_SHADES = ((76, 72, 62), (86, 79, 65), (69, 70, 64), (94, 83, 66))
+STONE_HIGHLIGHT = (126, 112, 84)
+STONE_SHADOW = (37, 39, 37)
+CHARACTER_YELLOW = (255, 211, 0)
+CHARACTER_HIGHLIGHT = (255, 239, 83)
+SHOE_BLUE = (0, 105, 255)
+SHOE_DARK_BLUE = (0, 49, 200)
+CHARACTER_BLACK = (8, 8, 8)
+EYE_WHITE = (255, 255, 255)
 DOT = (255, 230, 170)
+BUTTON_OUTLINE = (18, 16, 14)
+BUTTON_RIM = (77, 48, 29)
+BUTTON_LIGHT = (255, 139, 0)
+BUTTON_DARK = (224, 61, 7)
+BUTTON_SHADOW = (43, 32, 25)
+BUTTON_HIGHLIGHT = (255, 207, 85)
 
 
 # # is a wall, . is a pellet, and spaces are empty paths.
@@ -19,27 +32,33 @@ MAZE = [
     "#                        #   ##",
     "# #####################    #  #",
     "#   #                 # #######",
-    "# # #   # # ####    # # # ### #",
-    "# # #   # # ####    # # # ### #",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
+    "# # #   # # ##### # # # #     #",
+    "# # #   # # ##    # # # # ### #",
+    "# # ### # ######### ### # # # #",
+    "# # #   ###       #     # # # #",
+    "# # # ####### # # # ### # # # #",
+    "# # #   #   # # # # # # # # # #",
+    "# # ### # # # # # #   # # # # #",
+    "# # #   # # # # # ####### # # #",
+    "#   # # #   # # #      ## # # #",
+    "# ### ### ##### ## ### ## # # #",
+    "# #   #      #   # #   ## # # #",
+    "# # ### ######   # # #### # # #",
+    "# # # # #   ##   # #      # # #",
+    "# # # # # # ############### # #",
+    "# #   # # # #######   #       #",
+    "# # ### # #       # # # #######",
+    "#     # # ### ### # # # #     #",
+    "# # # # # # # # # # ### # # # #",
+    "# # ### # #     #       # # # #",
+    "# # # # # ##################  #",
+    "# # # # #             #   ## ##",
+    "# # # # ####### ##### # #    ##",
+    "# # #         # #   # # #### ##",
+    "# # ##### ### # # # #      #  #",
+    "# # ##### ##### # # ###### ####",
+    "#                 #           #",
+    "###############################",
 ]
 
 maze_width = max(len(row) for row in MAZE)
@@ -60,47 +79,308 @@ for row_index in range(center_row - 1, center_row + 2):
         maze_tiles[row_index][column] = " "
 maze_tiles[center_row - 2][center_column] = " "
 maze_tiles[center_row - 3][center_column] = " "
+# The bottom-center tile is the start; the center tile is the level exit.
+START_ROW = len(maze_tiles) - 2
+START_COLUMN = 15
+EXIT_ROW = center_row
+EXIT_COLUMN = center_column
+maze_tiles[EXIT_ROW][EXIT_COLUMN] = "G"
 MAZE = ["".join(row) for row in maze_tiles]
 
+# Size the window to the complete maze so there is no surrounding black border.
+WINDOW_WIDTH = maze_width * CELL_SIZE
+WINDOW_HEIGHT = len(MAZE) * CELL_SIZE
 
-def draw_maze(screen):
-    """Draw the maze walls and pellets, centred in the game window."""
-    maze_width = max(len(row) for row in MAZE) * CELL_SIZE
-    maze_height = len(MAZE) * CELL_SIZE
+
+LEVEL_TWO_MAZE = [
+    "###############################",
+    "#    #                        #",
+    "#  #    ########## ########## #",
+    "####### #                 #   #",
+    "#     # # #    #### # #   # # #",
+    "# ### # # #    #### # #   # # #",
+    "# # # # ### ######### # ### # #",
+    "# # # #     #       ###   # # #",
+    "# # # # ### # # # ####### # # #",
+    "# # # # # # # # # #   #   # # #",
+    "# # # # #   # # # # # # ### # #",
+    "# # # ####### # # # # #   # # #",
+    "# # # ##      # # #   # # #   #",
+    "# # # ## ### ## ##### ### ### #",
+    "# # # ##   # #   #      #   # #",
+    "# # # #### # # G ###### ### # #",
+    "# # #      # #   ##   # # # # #",
+    "# # ############### # # # # # #",
+    "#           ######  # # #   # #",
+    "####### # # #      ## # ### # #",
+    "#     # # # # ### ### # #     #",
+    "# # # # ### # # # # # # # # # #",
+    "# # # #       #     # # ### # #",
+    "#  ################## # # # # #",
+    "## ##   #             # # # # #",
+    "##    # # ##### ####### # # # #",
+    "## #### # #   # #         # # #",
+    "#  #      # # # # ### ##### # #",
+    "#### ###### # # ##### ##### # #",
+    "#           #                 #",
+    "###############################",
+]
+
+
+def generate_new_maze():
+    """Return a copy of the manually editable second-level map."""
+    return LEVEL_TWO_MAZE.copy()
+
+
+LEVEL_TWO_EXIT_COLUMN = EXIT_COLUMN
+LEVEL_THREE_START_ROW = START_ROW
+LEVEL_THREE_START_COLUMN = START_COLUMN
+GATE_TILE = (17, 15)
+GATE_SLIDE_DURATION = 450
+LEVEL_THREE_MAZE = [
+    "###############################",
+    "#           #                 #",
+    "#### ###### # # ##### ####### #",
+    "# ##      # # # # ### ####### #",
+    "## #### # #   # #         # # #",
+    "##    # # ##### ####### # # # #",
+    "## ##   #             # # # # #",
+    "#  ################## # # # # #",
+    "# # # #       #     # # ### # #",
+    "# # # # ### # # # # # # # # # #",
+    "#     # # # # ### ### # #     #",
+    "####### # # #      ## # ### # #",
+    "#           ######  # # #   # #",
+    "# # ############### # # # # # #",
+    "# # #      # #   ##   # # # # #",
+    "# # # #### # # G ###### ### # #",
+    "# # # ##   # #   #      #   # #",
+    "# # # ## ### ######## ### ### #",
+    "# # # ##      # # #   # # #   #",
+    "# # # ####### # # # # #   # # #",
+    "# # # # #   # # # # # # ### # #",
+    "# # # # # # # # # #   #   # # #",
+    "# # # # ### # # # ####### # # #",
+    "# # # #     #       ###   # # #",
+    "# # # # ### ######### # ### # #",
+    "# ### # # #    #### # #   # # #",
+    "#     # # # ## #### # # # # # #",
+    "####### #                 ### #",
+    "# ##    ########## ########## #",
+    "#    #                        #",
+    "###############################",
+]
+LEVEL_THREE_BUTTONS = [
+    {"wall": (8, 4), "front": (8, 5)},
+    {"wall": (18, 16), "front": (18, 15)},
+    {"wall": (22, 20), "front": (21, 20)},
+    {"wall": (28, 0), "front": (28, 1)},
+]
+
+
+def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_started_at=None):
+    """Draw a rocky cave maze with a dim, mottled stone floor."""
+    maze_width = max(len(row) for row in maze) * CELL_SIZE
+    maze_height = len(maze) * CELL_SIZE
     offset_x = (WINDOW_WIDTH - maze_width) // 2
     offset_y = (WINDOW_HEIGHT - maze_height) // 2
 
-    screen.fill(BLACK)
+    screen.fill(CAVE_FLOOR)
 
-    for row, line in enumerate(MAZE):
+    # Subtle floor speckles make the paths feel like rough cave stone.
+    for i in range(260):
+        x = (i * 191 + 37) % WINDOW_WIDTH
+        y = (i * 113 + 59) % WINDOW_HEIGHT
+        pygame.draw.circle(screen, FLOOR_FLECKS[i % len(FLOOR_FLECKS)], (x, y), 1 + (i % 3 == 0))
+
+    for row, line in enumerate(maze):
         for column, tile in enumerate(line):
             x = offset_x + column * CELL_SIZE
             y = offset_y + row * CELL_SIZE
 
             if tile == "#":
+                wall_y = y
+                is_gate = (row, column) == GATE_TILE
+                if is_gate and gate_slide_started_at is not None:
+                    elapsed = pygame.time.get_ticks() - gate_slide_started_at
+                    slide = min(CELL_SIZE, int(CELL_SIZE * elapsed / GATE_SLIDE_DURATION))
+                    if slide >= CELL_SIZE:
+                        continue
+                    wall_y += slide
+                    previous_clip = screen.get_clip()
+                    screen.set_clip(pygame.Rect(x, y, CELL_SIZE, CELL_SIZE))
+                shade = STONE_SHADES[(row * 7 + column * 11) % len(STONE_SHADES)]
                 pygame.draw.rect(
                     screen,
-                    MAZE_BLUE,
-                    (x + WALL_INSET, y + WALL_INSET, CELL_SIZE - 2 * WALL_INSET, CELL_SIZE - 2 * WALL_INSET),
-                    border_radius=3,
+                    STONE_SHADOW,
+                    (x + WALL_INSET, wall_y + WALL_INSET, CELL_SIZE - 2 * WALL_INSET, CELL_SIZE - 2 * WALL_INSET),
                 )
+                pygame.draw.rect(screen, shade, (x + 2, wall_y + 2, CELL_SIZE - 4, CELL_SIZE - 4))
+                pygame.draw.line(screen, STONE_HIGHLIGHT, (x + 2, wall_y + 2), (x + CELL_SIZE - 3, wall_y + 2), 2)
+                pygame.draw.line(screen, STONE_HIGHLIGHT, (x + 2, wall_y + 2), (x + 2, wall_y + CELL_SIZE - 3), 2)
+                pygame.draw.line(screen, STONE_SHADOW, (x + CELL_SIZE - 2, wall_y + 3), (x + CELL_SIZE - 2, wall_y + CELL_SIZE - 3), 2)
+                pygame.draw.line(screen, STONE_SHADOW, (x + 3, wall_y + CELL_SIZE - 2), (x + CELL_SIZE - 3, wall_y + CELL_SIZE - 2), 2)
+                if (row * 13 + column * 5) % 9 == 0:
+                    pygame.draw.line(screen, STONE_SHADOW, (x + 8, wall_y + 8), (x + 12, wall_y + 13), 1)
+                    pygame.draw.line(screen, STONE_SHADOW, (x + 12, wall_y + 13), (x + 16, wall_y + 10), 1)
+                if is_gate and gate_slide_started_at is not None:
+                    screen.set_clip(previous_clip)
             elif tile == ".":
                 pygame.draw.circle(screen, DOT, (x + CELL_SIZE // 2, y + CELL_SIZE // 2), 3)
+
+    for button in buttons:
+        row, column = button["wall"]
+        x = column * CELL_SIZE
+        y = row * CELL_SIZE
+        pygame.draw.rect(screen, BUTTON_SHADOW, (x + 5, y + 7, 15, 14))
+        pygame.draw.rect(screen, BUTTON_OUTLINE, (x + 6, y + 5, 13, 13))
+        if button["pressed"]:
+            pygame.draw.rect(screen, BUTTON_RIM, (x + 8, y + 7, 9, 9))
+            pygame.draw.rect(screen, BUTTON_DARK, (x + 9, y + 9, 7, 6))
+            pygame.draw.rect(screen, BUTTON_LIGHT, (x + 10, y + 10, 3, 2))
+            pygame.draw.rect(screen, BUTTON_SHADOW, (x + 9, y + 14, 7, 2))
+        else:
+            pygame.draw.rect(screen, BUTTON_RIM, (x + 7, y + 6, 11, 11))
+            pygame.draw.rect(screen, BUTTON_DARK, (x + 8, y + 7, 9, 9))
+            pygame.draw.rect(screen, BUTTON_LIGHT, (x + 9, y + 7, 7, 7))
+            pygame.draw.rect(screen, BUTTON_HIGHLIGHT, (x + 9, y + 8, 3, 2))
+            pygame.draw.rect(screen, BUTTON_SHADOW, (x + 8, y + 14, 9, 2))
+
+    # Keep the character fully inside and centred on its current maze tile.
+    draw_character(
+        screen,
+        player_column * CELL_SIZE + 1,
+        player_row * CELL_SIZE + 2,
+    )
+
+
+def draw_character(screen, x, y):
+    """Draw the yellow, blue-shoed character from the supplied reference."""
+    pixel = 2
+
+    # A stepped silhouette keeps the round body pixelated.
+    body = [
+        "..YYYYYYY..",
+        ".YYYYYYYYY.",
+        "YYYYYYYYYYY",
+        "YYYYYYYYYYY",
+        "YYYYYYYYYYY",
+        ".YYYYYYYYY.",
+        "..YYYYYYY..",
+    ]
+    for row, line in enumerate(body):
+        for column, cell in enumerate(line):
+            if cell == "Y":
+                pygame.draw.rect(screen, CHARACTER_YELLOW, (x + column * pixel, y + row * pixel, pixel, pixel))
+
+    # Glossy highlight and large black eyes with white glints.
+    for column, row in ((3, 0), (2, 1), (1, 2)):
+        pygame.draw.rect(screen, CHARACTER_HIGHLIGHT, (x + column * pixel, y + row * pixel, pixel, pixel))
+    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 3 * pixel, y + 3 * pixel, 2 * pixel, 3 * pixel))
+    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 7 * pixel, y + 3 * pixel, 2 * pixel, 3 * pixel))
+    pygame.draw.rect(screen, EYE_WHITE, (x + 3 * pixel, y + 3 * pixel, pixel, pixel))
+    pygame.draw.rect(screen, EYE_WHITE, (x + 7 * pixel, y + 3 * pixel, pixel, pixel))
+
+    # Bright blue shoes with darker soles.
+    pygame.draw.rect(screen, SHOE_BLUE, (x + pixel, y + 7 * pixel, 4 * pixel, 2 * pixel))
+    pygame.draw.rect(screen, SHOE_BLUE, (x + 7 * pixel, y + 7 * pixel, 4 * pixel, 2 * pixel))
+    pygame.draw.rect(screen, SHOE_DARK_BLUE, (x + pixel, y + 9 * pixel, 4 * pixel, pixel))
+    pygame.draw.rect(screen, SHOE_DARK_BLUE, (x + 7 * pixel, y + 9 * pixel, 4 * pixel, pixel))
 
 
 def main():
     pygame.init()
+    pygame.key.set_repeat(180, 130)
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Arcade Maze")
     clock = pygame.time.Clock()
     running = True
+    maze = MAZE
+    player_row = START_ROW
+    player_column = START_COLUMN
+    player_facing = (-1, 0)
+    level = 1
+    buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
+    gate_slide_started_at = None
+    pygame.display.set_caption(f"Arcade Maze - Level {level}")
+    movement = {
+        pygame.K_w: (-1, 0),
+        pygame.K_s: (1, 0),
+        pygame.K_a: (0, -1),
+        pygame.K_d: (0, 1),
+    }
 
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_1:
+                level = 1
+                maze = MAZE
+                player_row = START_ROW
+                player_column = START_COLUMN
+                pygame.display.set_caption(f"Arcade Maze - Level {level}")
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_2:
+                level = 2
+                maze = generate_new_maze()
+                player_row = START_ROW
+                player_column = START_COLUMN
+                pygame.display.set_caption(f"Arcade Maze - Level {level}")
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_3:
+                level = 3
+                maze = LEVEL_THREE_MAZE.copy()
+                player_row = LEVEL_THREE_START_ROW
+                player_column = LEVEL_THREE_START_COLUMN
+                player_facing = (-1, 0)
+                buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
+                gate_slide_started_at = None
+                pygame.display.set_caption(f"Arcade Maze - Level {level}")
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_e and level == 3:
+                target = (player_row + player_facing[0], player_column + player_facing[1])
+                for button in buttons:
+                    if not button["pressed"] and target == button["wall"]:
+                        button["pressed"] = True
+                        if all(item["pressed"] for item in buttons) and gate_slide_started_at is None:
+                            gate_slide_started_at = pygame.time.get_ticks()
+                        break
+            elif event.type == pygame.KEYDOWN and event.key in movement:
+                row_step, column_step = movement[event.key]
+                player_facing = (row_step, column_step)
+                next_row = player_row + row_step
+                next_column = player_column + column_step
+                destination = maze[next_row][next_column]
+                gate_is_open = (
+                    level == 3
+                    and gate_slide_started_at is not None
+                    and pygame.time.get_ticks() - gate_slide_started_at >= GATE_SLIDE_DURATION
+                )
+                if destination != "#" or ((next_row, next_column) == GATE_TILE and gate_is_open):
+                    player_row = next_row
+                    player_column = next_column
+                    if (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 1:
+                        level = 2
+                        maze = generate_new_maze()
+                        player_row = START_ROW
+                        player_column = START_COLUMN
+                        pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                    elif (player_row, player_column) == (EXIT_ROW, LEVEL_TWO_EXIT_COLUMN) and level == 2:
+                        level = 3
+                        maze = LEVEL_THREE_MAZE.copy()
+                        player_row = LEVEL_THREE_START_ROW
+                        player_column = LEVEL_THREE_START_COLUMN
+                        player_facing = (-1, 0)
+                        buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
+                        gate_slide_started_at = None
+                        pygame.display.set_caption(f"Arcade Maze - Level {level}")
 
-        draw_maze(screen)
+        draw_maze(
+            screen,
+            maze,
+            player_row,
+            player_column,
+            buttons if level == 3 else (),
+            gate_slide_started_at if level == 3 else None,
+        )
         pygame.display.flip()
         clock.tick(60)
 
