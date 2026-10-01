@@ -1,5 +1,7 @@
 """A simple arcade-style maze background made with Pygame."""
 
+import random
+
 import pygame
 
 
@@ -19,11 +21,18 @@ CHARACTER_BLACK = (8, 8, 8)
 EYE_WHITE = (255, 255, 255)
 DOT = (255, 230, 170)
 BUTTON_OUTLINE = (18, 16, 14)
-BUTTON_RIM = (77, 48, 29)
-BUTTON_LIGHT = (255, 139, 0)
-BUTTON_DARK = (224, 61, 7)
-BUTTON_SHADOW = (43, 32, 25)
-BUTTON_HIGHLIGHT = (255, 207, 85)
+BUTTON_RIM = (43, 50, 52)
+BUTTON_LIGHT = (82, 94, 97)
+BUTTON_DARK = (57, 67, 70)
+BUTTON_SHADOW = (31, 35, 36)
+BUTTON_HIGHLIGHT = (112, 127, 129)
+
+LEVEL_THREE_FLOOR = (43, 45, 47)
+LEVEL_THREE_FLOOR_FLECKS = ((55, 57, 59), (63, 65, 66), (35, 38, 40))
+LEVEL_THREE_ROCK_HIGHLIGHTS = ((77, 79, 80), (68, 71, 72), (84, 85, 85))
+LEVEL_THREE_STONE_SHADES = ((49, 70, 75), (56, 78, 82), (47, 64, 72), (65, 83, 86))
+LEVEL_THREE_STONE_HIGHLIGHT = (91, 124, 126)
+LEVEL_THREE_STONE_SHADOW = (25, 38, 42)
 
 
 # # is a wall, . is a pellet, and spaces are empty paths.
@@ -170,28 +179,89 @@ LEVEL_THREE_MAZE = [
     "#    #                        #",
     "###############################",
 ]
+
+# Level 4 maze: edit one quoted string per row (31 characters each).
+# # is a wall, spaces are paths, and G is behind the central 3x3 goal room.
+LEVEL_FOUR_MAZE = [
+    "###############################",
+    "# #   #     #       #         #",
+    "# # # # # # ### ### # ##### # #",
+    "#   #   # #   # #   #   #   # #",
+    "# ####### ### ### ##### # ### #",
+    "#     #   #       #   # # #   #",
+    "##### # ########### # # # ### #",
+    "# #   #     #   #   # # #   # #",
+    "# # ####### # # # ### # ### # #",
+    "#   #   # #   #   # #   #   # #",
+    "# ### # # ######### ##### ### #",
+    "#   # #                 #   # #",
+    "### # ####### ############# ###",
+    "#   # #   #  #####  #     #   #",
+    "# ### # # ####   ## # ### ### #",
+    "# # #   #    # G ##   # # #   #",
+    "# # # ########   ###### # # # #",
+    "# # #   #    ## ##  #   #   # #",
+    "# # ### # ### #     ### ##### #",
+    "# #     # # #     #   #     # #",
+    "# # ##### # # ##### # ### # # #",
+    "# # #     # # #   # # #   # # #",
+    "# # # ##### # # # ### # ### # #",
+    "# # # #     # # #     #   # # #",
+    "# ### # ##### # ####### # ### #",
+    "#   # # #     #   # #   #     #",
+    "### # # # ####### # # #########",
+    "# # # #   #     # # # #     # #",
+    "# # # # ##### ### # # # ### # #",
+    "#     #       #   #     #     #",
+    "###############################",
+]
+
 LEVEL_THREE_BUTTONS = [
     {"wall": (8, 4), "front": (8, 5)},
     {"wall": (18, 16), "front": (18, 15)},
     {"wall": (22, 20), "front": (21, 20)},
     {"wall": (28, 0), "front": (28, 1)},
 ]
+LEVEL_FOUR_PILLARS = ((14, 14), (14, 16), (16, 14), (16, 16))
+LEVEL_FOUR_TORCHES = ((1, 30, "surface"), (18, 21, "surface"), (27, 0, "surface"), (28, 15, "surface"))
 
 
-def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_started_at=None, animation_frame=0):
+def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_started_at=None, level_three=False, floor_texture=None, pillars=(), torches=(), carried_torch=False):
     """Draw a rocky cave maze with a dim, mottled stone floor."""
     maze_width = max(len(row) for row in maze) * CELL_SIZE
     maze_height = len(maze) * CELL_SIZE
     offset_x = (WINDOW_WIDTH - maze_width) // 2
     offset_y = (WINDOW_HEIGHT - maze_height) // 2
 
-    screen.fill(CAVE_FLOOR)
+    floor_color = LEVEL_THREE_FLOOR if level_three else CAVE_FLOOR
+    floor_flecks = LEVEL_THREE_FLOOR_FLECKS if level_three else FLOOR_FLECKS
+    stone_shades = LEVEL_THREE_STONE_SHADES if level_three else STONE_SHADES
+    stone_highlight = LEVEL_THREE_STONE_HIGHLIGHT if level_three else STONE_HIGHLIGHT
+    stone_shadow = LEVEL_THREE_STONE_SHADOW if level_three else STONE_SHADOW
+    if level_three and floor_texture is not None:
+        screen.blit(floor_texture, (0, 0))
+    else:
+        screen.fill(floor_color)
 
-    # Subtle floor speckles make the paths feel like rough cave stone.
-    for i in range(260):
-        x = (i * 191 + 37) % WINDOW_WIDTH
-        y = (i * 113 + 59) % WINDOW_HEIGHT
-        pygame.draw.circle(screen, FLOOR_FLECKS[i % len(FLOOR_FLECKS)], (x, y), 1 + (i % 3 == 0))
+    # Floor details give each cave section its own atmosphere.
+    if level_three and floor_texture is None:
+        # Irregular low-contrast chips make the floor read as grey cave rock.
+        for i in range(190):
+            x = (i * 191 + 37) % WINDOW_WIDTH
+            y = (i * 113 + 59) % WINDOW_HEIGHT
+            color = floor_flecks[i % len(floor_flecks)]
+            width = 2 + i % 5
+            height = 1 + (i // 3) % 3
+            pygame.draw.ellipse(screen, color, (x, y, width, height))
+            if i % 5 == 0:
+                highlight = LEVEL_THREE_ROCK_HIGHLIGHTS[(i // 5) % len(LEVEL_THREE_ROCK_HIGHLIGHTS)]
+                pygame.draw.line(screen, highlight, (x, y), (x + width, y), 1)
+    elif not level_three:
+        # Subtle floor speckles make the original cave feel like rough stone.
+        for i in range(260):
+            x = (i * 191 + 37) % WINDOW_WIDTH
+            y = (i * 113 + 59) % WINDOW_HEIGHT
+            pygame.draw.circle(screen, floor_flecks[i % len(floor_flecks)], (x, y), 1 + (i % 3 == 0))
 
     for row, line in enumerate(maze):
         for column, tile in enumerate(line):
@@ -209,24 +279,30 @@ def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_st
                     wall_y += slide
                     previous_clip = screen.get_clip()
                     screen.set_clip(pygame.Rect(x, y, CELL_SIZE, CELL_SIZE))
-                shade = STONE_SHADES[(row * 7 + column * 11) % len(STONE_SHADES)]
+                shade = stone_shades[(row * 7 + column * 11) % len(stone_shades)]
                 pygame.draw.rect(
                     screen,
-                    STONE_SHADOW,
+                    stone_shadow,
                     (x + WALL_INSET, wall_y + WALL_INSET, CELL_SIZE - 2 * WALL_INSET, CELL_SIZE - 2 * WALL_INSET),
                 )
                 pygame.draw.rect(screen, shade, (x + 2, wall_y + 2, CELL_SIZE - 4, CELL_SIZE - 4))
-                pygame.draw.line(screen, STONE_HIGHLIGHT, (x + 2, wall_y + 2), (x + CELL_SIZE - 3, wall_y + 2), 2)
-                pygame.draw.line(screen, STONE_HIGHLIGHT, (x + 2, wall_y + 2), (x + 2, wall_y + CELL_SIZE - 3), 2)
-                pygame.draw.line(screen, STONE_SHADOW, (x + CELL_SIZE - 2, wall_y + 3), (x + CELL_SIZE - 2, wall_y + CELL_SIZE - 3), 2)
-                pygame.draw.line(screen, STONE_SHADOW, (x + 3, wall_y + CELL_SIZE - 2), (x + CELL_SIZE - 3, wall_y + CELL_SIZE - 2), 2)
+                pygame.draw.line(screen, stone_highlight, (x + 2, wall_y + 2), (x + CELL_SIZE - 3, wall_y + 2), 2)
+                pygame.draw.line(screen, stone_highlight, (x + 2, wall_y + 2), (x + 2, wall_y + CELL_SIZE - 3), 2)
+                pygame.draw.line(screen, stone_shadow, (x + CELL_SIZE - 2, wall_y + 3), (x + CELL_SIZE - 2, wall_y + CELL_SIZE - 3), 2)
+                pygame.draw.line(screen, stone_shadow, (x + 3, wall_y + CELL_SIZE - 2), (x + CELL_SIZE - 3, wall_y + CELL_SIZE - 2), 2)
                 if (row * 13 + column * 5) % 9 == 0:
-                    pygame.draw.line(screen, STONE_SHADOW, (x + 8, wall_y + 8), (x + 12, wall_y + 13), 1)
-                    pygame.draw.line(screen, STONE_SHADOW, (x + 12, wall_y + 13), (x + 16, wall_y + 10), 1)
+                    pygame.draw.line(screen, stone_shadow, (x + 8, wall_y + 8), (x + 12, wall_y + 13), 1)
+                    pygame.draw.line(screen, stone_shadow, (x + 12, wall_y + 13), (x + 16, wall_y + 10), 1)
                 if is_gate and gate_slide_started_at is not None:
                     screen.set_clip(previous_clip)
             elif tile == ".":
                 pygame.draw.circle(screen, DOT, (x + CELL_SIZE // 2, y + CELL_SIZE // 2), 3)
+
+    for row, column in pillars:
+        draw_pillar(screen, column * CELL_SIZE, row * CELL_SIZE)
+
+    for row, column, wall_side in torches:
+        draw_torch(screen, column * CELL_SIZE, row * CELL_SIZE, wall_side)
 
     for button in buttons:
         row, column = button["wall"]
@@ -251,14 +327,108 @@ def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_st
         screen,
         player_column * CELL_SIZE + 1,
         player_row * CELL_SIZE + 2,
-        idle_frame=animation_frame,
     )
+    if carried_torch:
+        draw_carried_torch(screen, player_column * CELL_SIZE, player_row * CELL_SIZE)
 
 
-def draw_character(screen, x, y, idle_frame=0):
-    """Draw the yellow, blue-shoed character with subtle idle motion."""
+def draw_pillar(screen, x, y):
+    """Draw a squat carved-stone pillar in one maze tile."""
+    pygame.draw.rect(screen, (18, 20, 21), (x + 2, y + 4, 21, 20))
+    pygame.draw.rect(screen, (119, 126, 126), (x + 5, y + 6, 15, 15))
+    pygame.draw.polygon(screen, (166, 171, 168), ((x + 3, y + 6), (x + 7, y + 2), (x + 19, y + 2), (x + 22, y + 6)))
+    pygame.draw.rect(screen, (143, 151, 149), (x + 4, y + 6, 18, 4))
+    pygame.draw.rect(screen, (178, 183, 179), (x + 6, y + 10, 3, 8))
+    pygame.draw.line(screen, (70, 77, 77), (x + 10, y + 12), (x + 19, y + 12), 1)
+    pygame.draw.rect(screen, (74, 79, 79), (x + 4, y + 19, 18, 4))
+    pygame.draw.line(screen, (196, 198, 190), (x + 5, y + 20), (x + 20, y + 20), 1)
+    pygame.draw.line(screen, (220, 222, 212), (x + 7, y + 7), (x + 18, y + 7), 1)
+
+
+def draw_torch(screen, x, y, wall_side="surface"):
+    """Draw a warm pixel-art cave torch against the stone background."""
+    if wall_side == "right":
+        pygame.draw.rect(screen, (31, 34, 34), (x + 20, y + 12, 5, 7))
+        pygame.draw.line(screen, (43, 45, 43), (x + 15, y + 15), (x + 24, y + 15), 3)
+    elif wall_side == "left":
+        pygame.draw.rect(screen, (31, 34, 34), (x, y + 12, 5, 7))
+        pygame.draw.line(screen, (43, 45, 43), (x + 1, y + 15), (x + 10, y + 15), 3)
+    else:
+        pygame.draw.rect(screen, (28, 29, 28), (x + 8, y + 14, 11, 5))
+    pygame.draw.polygon(screen, (105, 68, 42), ((x + 12, y + 22), (x + 15, y + 22), (x + 14, y + 10), (x + 11, y + 10)))
+    pygame.draw.line(screen, (160, 112, 67), (x + 12, y + 13), (x + 14, y + 20), 1)
+    pygame.draw.polygon(screen, (255, 104, 28), ((x + 9, y + 11), (x + 10, y + 6), (x + 13, y + 2), (x + 14, y + 7), (x + 17, y + 5), (x + 18, y + 11), (x + 16, y + 14), (x + 10, y + 14)))
+    pygame.draw.polygon(screen, (255, 190, 61), ((x + 11, y + 11), (x + 12, y + 7), (x + 14, y + 10), (x + 16, y + 8), (x + 16, y + 12), (x + 14, y + 14), (x + 11, y + 13)))
+    pygame.draw.rect(screen, (255, 232, 143), (x + 13, y + 10, 2, 3))
+
+
+def draw_carried_torch(screen, x, y):
+    """Draw the picked-up torch in the character's hand."""
+    pygame.draw.line(screen, (68, 43, 29), (x + 17, y + 19), (x + 21, y + 9), 3)
+    pygame.draw.line(screen, (166, 112, 65), (x + 18, y + 17), (x + 21, y + 10), 1)
+    pygame.draw.polygon(screen, (255, 104, 28), ((x + 17, y + 10), (x + 18, y + 5), (x + 21, y + 1), (x + 22, y + 6), (x + 24, y + 5), (x + 24, y + 11), (x + 21, y + 13), (x + 18, y + 13)))
+    pygame.draw.polygon(screen, (255, 190, 61), ((x + 19, y + 10), (x + 20, y + 6), (x + 22, y + 9), (x + 22, y + 12), (x + 19, y + 12)))
+    pygame.draw.rect(screen, (255, 232, 143), (x + 21, y + 8, 2, 3))
+
+
+def make_level_three_floor():
+    """Create a grey, irregular cobblestone floor for the third cave section."""
+    floor = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+    floor.fill((25, 27, 28))
+    rng = random.Random(31)
+    stone_width = 43
+    stone_height = 35
+    rows = (WINDOW_HEIGHT + stone_height - 1) // stone_height
+    columns = (WINDOW_WIDTH + stone_width - 1) // stone_width + 1
+
+    for row in range(rows):
+        for column in range(columns):
+            x = column * stone_width - (stone_width // 2 if row % 2 else 0)
+            y = row * stone_height
+            inset = rng.randint(2, 5)
+            left = x + inset
+            top = y + rng.randint(2, 5)
+            right = x + stone_width - rng.randint(2, 5)
+            bottom = y + stone_height - rng.randint(2, 5)
+            points = [
+                (left + rng.randint(4, 9), top),
+                (right - rng.randint(5, 10), top + rng.randint(-1, 2)),
+                (right, top + rng.randint(5, 10)),
+                (right + rng.randint(-1, 2), bottom - rng.randint(5, 10)),
+                (right - rng.randint(6, 11), bottom),
+                (left + rng.randint(6, 11), bottom + rng.randint(-2, 1)),
+                (left, bottom - rng.randint(5, 10)),
+                (left + rng.randint(-2, 1), top + rng.randint(6, 11)),
+            ]
+            shade = rng.randint(61, 105)
+            pygame.draw.polygon(floor, (shade, shade + rng.randint(0, 4), shade + rng.randint(1, 6)), points)
+            pygame.draw.lines(floor, (35, 37, 38), True, points, 2)
+
+            # Broken top and left bevels mimic the highlights on rough stones.
+            highlight = min(145, shade + rng.randint(13, 25))
+            pygame.draw.line(floor, (highlight, highlight + 2, highlight + 3), points[0], points[1], 2)
+            pygame.draw.line(floor, (highlight - 7, highlight - 5, highlight - 4), points[7], points[0], 2)
+            shadow = max(25, shade - 19)
+            pygame.draw.line(floor, (shadow, shadow + 2, shadow + 3), points[3], points[4], 2)
+
+            if rng.random() < 0.35:
+                chip_x = rng.randint(left + 7, max(left + 7, right - 8))
+                chip_y = rng.randint(top + 7, max(top + 7, bottom - 7))
+                chip_size = rng.randint(2, 4)
+                pygame.draw.line(
+                    floor,
+                    (max(35, shade - 12), max(37, shade - 10), max(38, shade - 8)),
+                    (chip_x, chip_y),
+                    (chip_x + chip_size, chip_y + 1),
+                    1,
+                )
+
+    return floor
+
+
+def draw_character(screen, x, y):
+    """Draw the yellow, blue-shoed character from the supplied reference."""
     pixel = 2
-    body_y_offset = 1 if idle_frame % 2 == 0 else 0
 
     # A stepped silhouette keeps the round body pixelated.
     body = [
@@ -273,42 +443,28 @@ def draw_character(screen, x, y, idle_frame=0):
     for row, line in enumerate(body):
         for column, cell in enumerate(line):
             if cell == "Y":
-                pygame.draw.rect(
-                    screen,
-                    CHARACTER_YELLOW,
-                    (x + column * pixel, y + body_y_offset + row * pixel, pixel, pixel),
-                )
+                pygame.draw.rect(screen, CHARACTER_YELLOW, (x + column * pixel, y + row * pixel, pixel, pixel))
 
     # Glossy highlight and large black eyes with white glints.
     for column, row in ((3, 0), (2, 1), (1, 2)):
-        pygame.draw.rect(
-            screen,
-            CHARACTER_HIGHLIGHT,
-            (x + column * pixel, y + body_y_offset + row * pixel, pixel, pixel),
-        )
-
-    eye_y = y + body_y_offset + 3 * pixel
-    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 3 * pixel, eye_y, 2 * pixel, 3 * pixel))
-    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 7 * pixel, eye_y, 2 * pixel, 3 * pixel))
-    pygame.draw.rect(screen, EYE_WHITE, (x + 3 * pixel, eye_y, pixel, pixel))
-    pygame.draw.rect(screen, EYE_WHITE, (x + 7 * pixel, eye_y, pixel, pixel))
-
-    left_foot_x = x + pixel
-    right_foot_x = x + 7 * pixel
-    left_foot_y = y + 7 * pixel
-    right_foot_y = y + 7 * pixel
+        pygame.draw.rect(screen, CHARACTER_HIGHLIGHT, (x + column * pixel, y + row * pixel, pixel, pixel))
+    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 3 * pixel, y + 3 * pixel, 2 * pixel, 3 * pixel))
+    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 7 * pixel, y + 3 * pixel, 2 * pixel, 3 * pixel))
+    pygame.draw.rect(screen, EYE_WHITE, (x + 3 * pixel, y + 3 * pixel, pixel, pixel))
+    pygame.draw.rect(screen, EYE_WHITE, (x + 7 * pixel, y + 3 * pixel, pixel, pixel))
 
     # Bright blue shoes with darker soles.
-    pygame.draw.rect(screen, SHOE_BLUE, (left_foot_x, left_foot_y, 4 * pixel, 2 * pixel))
-    pygame.draw.rect(screen, SHOE_BLUE, (right_foot_x, right_foot_y, 4 * pixel, 2 * pixel))
-    pygame.draw.rect(screen, SHOE_DARK_BLUE, (left_foot_x, left_foot_y + 2 * pixel, 4 * pixel, pixel))
-    pygame.draw.rect(screen, SHOE_DARK_BLUE, (right_foot_x, right_foot_y + 2 * pixel, 4 * pixel, pixel))
+    pygame.draw.rect(screen, SHOE_BLUE, (x + pixel, y + 7 * pixel, 4 * pixel, 2 * pixel))
+    pygame.draw.rect(screen, SHOE_BLUE, (x + 7 * pixel, y + 7 * pixel, 4 * pixel, 2 * pixel))
+    pygame.draw.rect(screen, SHOE_DARK_BLUE, (x + pixel, y + 9 * pixel, 4 * pixel, pixel))
+    pygame.draw.rect(screen, SHOE_DARK_BLUE, (x + 7 * pixel, y + 9 * pixel, 4 * pixel, pixel))
 
 
 def main():
     pygame.init()
     pygame.key.set_repeat(180, 130)
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    floor_texture = make_level_three_floor()
     pygame.display.set_caption("Arcade Maze")
     clock = pygame.time.Clock()
     running = True
@@ -319,7 +475,8 @@ def main():
     level = 1
     buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
     gate_slide_started_at = None
-    animation_frame = 0
+    torches = []
+    carrying_torch = False
     pygame.display.set_caption(f"Arcade Maze - Level {level}")
     movement = {
         pygame.K_w: (-1, 0),
@@ -329,8 +486,6 @@ def main():
     }
 
     while running:
-        animation_frame = (pygame.time.get_ticks() // 240) % 2
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -355,14 +510,32 @@ def main():
                 buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
                 gate_slide_started_at = None
                 pygame.display.set_caption(f"Arcade Maze - Level {level}")
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_e and level == 3:
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_4:
+                level = 4
+                maze = LEVEL_FOUR_MAZE.copy()
+                player_row = START_ROW
+                player_column = START_COLUMN
+                player_facing = (-1, 0)
+                buttons = []
+                gate_slide_started_at = None
+                torches = list(LEVEL_FOUR_TORCHES)
+                carrying_torch = False
+                pygame.display.set_caption(f"Arcade Maze - Level {level}")
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                 target = (player_row + player_facing[0], player_column + player_facing[1])
-                for button in buttons:
-                    if not button["pressed"] and target == button["wall"]:
-                        button["pressed"] = True
-                        if all(item["pressed"] for item in buttons) and gate_slide_started_at is None:
-                            gate_slide_started_at = pygame.time.get_ticks()
-                        break
+                if level == 3:
+                    for button in buttons:
+                        if not button["pressed"] and target == button["wall"]:
+                            button["pressed"] = True
+                            if all(item["pressed"] for item in buttons) and gate_slide_started_at is None:
+                                gate_slide_started_at = pygame.time.get_ticks()
+                            break
+                elif level == 4 and not carrying_torch:
+                    for torch in torches:
+                        if target == torch[:2]:
+                            torches.remove(torch)
+                            carrying_torch = True
+                            break
             elif event.type == pygame.KEYDOWN and event.key in movement:
                 row_step, column_step = movement[event.key]
                 player_facing = (row_step, column_step)
@@ -392,6 +565,17 @@ def main():
                         buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
                         gate_slide_started_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                    elif (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 3:
+                        level = 4
+                        maze = LEVEL_FOUR_MAZE.copy()
+                        player_row = START_ROW
+                        player_column = START_COLUMN
+                        player_facing = (-1, 0)
+                        buttons = []
+                        gate_slide_started_at = None
+                        torches = list(LEVEL_FOUR_TORCHES)
+                        carrying_torch = False
+                        pygame.display.set_caption(f"Arcade Maze - Level {level}")
 
         draw_maze(
             screen,
@@ -400,7 +584,11 @@ def main():
             player_column,
             buttons if level == 3 else (),
             gate_slide_started_at if level == 3 else None,
-            animation_frame=animation_frame,
+            level_three=level in (3, 4),
+            floor_texture=floor_texture,
+            pillars=LEVEL_FOUR_PILLARS if level == 4 else (),
+            torches=torches if level == 4 else (),
+            carried_torch=carrying_torch if level == 4 else False,
         )
         pygame.display.flip()
         clock.tick(60)
