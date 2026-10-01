@@ -178,7 +178,7 @@ LEVEL_THREE_BUTTONS = [
 ]
 
 
-def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_started_at=None):
+def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_started_at=None, animation_frame=0):
     """Draw a rocky cave maze with a dim, mottled stone floor."""
     maze_width = max(len(row) for row in maze) * CELL_SIZE
     maze_height = len(maze) * CELL_SIZE
@@ -251,12 +251,14 @@ def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_st
         screen,
         player_column * CELL_SIZE + 1,
         player_row * CELL_SIZE + 2,
+        idle_frame=animation_frame,
     )
 
 
-def draw_character(screen, x, y):
-    """Draw the yellow, blue-shoed character from the supplied reference."""
+def draw_character(screen, x, y, idle_frame=0):
+    """Draw the yellow, blue-shoed character with subtle idle motion."""
     pixel = 2
+    body_y_offset = 1 if idle_frame % 2 == 0 else 0
 
     # A stepped silhouette keeps the round body pixelated.
     body = [
@@ -271,21 +273,36 @@ def draw_character(screen, x, y):
     for row, line in enumerate(body):
         for column, cell in enumerate(line):
             if cell == "Y":
-                pygame.draw.rect(screen, CHARACTER_YELLOW, (x + column * pixel, y + row * pixel, pixel, pixel))
+                pygame.draw.rect(
+                    screen,
+                    CHARACTER_YELLOW,
+                    (x + column * pixel, y + body_y_offset + row * pixel, pixel, pixel),
+                )
 
     # Glossy highlight and large black eyes with white glints.
     for column, row in ((3, 0), (2, 1), (1, 2)):
-        pygame.draw.rect(screen, CHARACTER_HIGHLIGHT, (x + column * pixel, y + row * pixel, pixel, pixel))
-    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 3 * pixel, y + 3 * pixel, 2 * pixel, 3 * pixel))
-    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 7 * pixel, y + 3 * pixel, 2 * pixel, 3 * pixel))
-    pygame.draw.rect(screen, EYE_WHITE, (x + 3 * pixel, y + 3 * pixel, pixel, pixel))
-    pygame.draw.rect(screen, EYE_WHITE, (x + 7 * pixel, y + 3 * pixel, pixel, pixel))
+        pygame.draw.rect(
+            screen,
+            CHARACTER_HIGHLIGHT,
+            (x + column * pixel, y + body_y_offset + row * pixel, pixel, pixel),
+        )
+
+    eye_y = y + body_y_offset + 3 * pixel
+    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 3 * pixel, eye_y, 2 * pixel, 3 * pixel))
+    pygame.draw.rect(screen, CHARACTER_BLACK, (x + 7 * pixel, eye_y, 2 * pixel, 3 * pixel))
+    pygame.draw.rect(screen, EYE_WHITE, (x + 3 * pixel, eye_y, pixel, pixel))
+    pygame.draw.rect(screen, EYE_WHITE, (x + 7 * pixel, eye_y, pixel, pixel))
+
+    left_foot_x = x + pixel
+    right_foot_x = x + 7 * pixel
+    left_foot_y = y + 7 * pixel
+    right_foot_y = y + 7 * pixel
 
     # Bright blue shoes with darker soles.
-    pygame.draw.rect(screen, SHOE_BLUE, (x + pixel, y + 7 * pixel, 4 * pixel, 2 * pixel))
-    pygame.draw.rect(screen, SHOE_BLUE, (x + 7 * pixel, y + 7 * pixel, 4 * pixel, 2 * pixel))
-    pygame.draw.rect(screen, SHOE_DARK_BLUE, (x + pixel, y + 9 * pixel, 4 * pixel, pixel))
-    pygame.draw.rect(screen, SHOE_DARK_BLUE, (x + 7 * pixel, y + 9 * pixel, 4 * pixel, pixel))
+    pygame.draw.rect(screen, SHOE_BLUE, (left_foot_x, left_foot_y, 4 * pixel, 2 * pixel))
+    pygame.draw.rect(screen, SHOE_BLUE, (right_foot_x, right_foot_y, 4 * pixel, 2 * pixel))
+    pygame.draw.rect(screen, SHOE_DARK_BLUE, (left_foot_x, left_foot_y + 2 * pixel, 4 * pixel, pixel))
+    pygame.draw.rect(screen, SHOE_DARK_BLUE, (right_foot_x, right_foot_y + 2 * pixel, 4 * pixel, pixel))
 
 
 def main():
@@ -302,6 +319,7 @@ def main():
     level = 1
     buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
     gate_slide_started_at = None
+    animation_frame = 0
     pygame.display.set_caption(f"Arcade Maze - Level {level}")
     movement = {
         pygame.K_w: (-1, 0),
@@ -311,6 +329,8 @@ def main():
     }
 
     while running:
+        animation_frame = (pygame.time.get_ticks() // 240) % 2
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -380,6 +400,7 @@ def main():
             player_column,
             buttons if level == 3 else (),
             gate_slide_started_at if level == 3 else None,
+            animation_frame=animation_frame,
         )
         pygame.display.flip()
         clock.tick(60)
