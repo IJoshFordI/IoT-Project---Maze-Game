@@ -1,11 +1,13 @@
 """A simple arcade-style maze background made with Pygame."""
 
+import math
 import random
 
 import pygame
 
 
 CELL_SIZE = 25
+PLAYER_KEY_REPEAT_INTERVAL_MS = 130
 WALL_INSET = 0
 
 CAVE_FLOOR = (14, 17, 20)
@@ -151,6 +153,9 @@ LEVEL_THREE_START_ROW = START_ROW
 LEVEL_THREE_START_COLUMN = START_COLUMN
 GATE_TILE = (17, 15)
 GATE_SLIDE_DURATION = 450
+LEVEL_TRANSITION_COVER_DURATION = 400
+LEVEL_TRANSITION_HOLD_DURATION = 650
+LEVEL_TRANSITION_REVEAL_DURATION = 400
 LEVEL_THREE_MAZE = [
     "###############################",
     "#           #                 #",
@@ -256,6 +261,17 @@ LEVEL_FIVE_MAZE = [
     "#   #   # #       #         # #",
     "############### ###############",
 ]
+# The lower axe chamber is a three-tile-wide corridor bounded by solid walls.
+_level_five_tiles = [list(row) for row in LEVEL_FIVE_MAZE]
+for _row in range(19, 30):
+    _level_five_tiles[_row][6] = "#"
+    _level_five_tiles[_row][10] = "#"
+    if _row >= 20:
+        _level_five_tiles[_row][7:10] = [" ", " ", " "]
+# Open the two Level 5 wall tiles marked in the reference image.
+_level_five_tiles[22][11] = " "
+_level_five_tiles[29][6] = " "
+LEVEL_FIVE_MAZE = ["".join(row) for row in _level_five_tiles]
 LEVEL_FIVE_START_ROW = len(LEVEL_FIVE_MAZE) - 1
 LEVEL_FIVE_START_COLUMN = 15
 LEVEL_FIVE_EXIT_ROW = 15
@@ -317,10 +333,41 @@ LEVEL_FIVE_EAST_MAZE = [
     "######## #######",
     "################",
 ]
+# The East Cave arrow corridor runs between two continuous stone walls.
+_east_cave_tiles = [list(row) for row in LEVEL_FIVE_EAST_MAZE]
+for _row in range(1, 14):
+    _east_cave_tiles[_row][12:15] = [" ", " ", " "]
+for _row in range(2, 13):
+    _east_cave_tiles[_row][11] = "#"
+LEVEL_FIVE_EAST_MAZE = ["".join(row) for row in _east_cave_tiles]
+LEVEL_FIVE_EAST_ARROW_DISPENSERS = (
+    (3, 11, 1), (5, 15, -1), (7, 11, 1), (9, 15, -1), (11, 11, 1),
+)
+LEVEL_FIVE_EAST_ARROW_PRESSURE_PLATE_TILE = (13, 11)
+LEVEL_FIVE_EAST_ARROW_INTERVAL_MS = 800
+LEVEL_FIVE_EAST_ARROW_SPEED = 220
 LEVEL_FIVE_SECTION_START = (14, 8)
 WEST_CAVE_ARTIFACT_TILE = (7, 9)
 NORTH_CAVE_ARTIFACT_TILE = (5, 3)
+EAST_CAVE_ARTIFACT_TILE = (3, 3)
 LEVEL_FIVE_ROCKS = ((15, 14), (15, 16), (16, 15))
+LEVEL_FIVE_PRESSURE_PLATE_TILE = (7, 29)
+LEVEL_FIVE_BOULDER_SPAWN_TILE = (30, 29)
+LEVEL_FIVE_BOULDER_PATH = (LEVEL_FIVE_BOULDER_SPAWN_TILE, (13, 29), (13, 30), (13, 29), (7, 29), (7, 27), (3, 27), (3, 29), (5, 29), (6, 29))
+LEVEL_FIVE_BOULDER_RUBBLE_TILE = (5, 29)
+LEVEL_FIVE_BOULDER_SPEED = 350
+LEVEL_FIVE_BOULDER_IMPACT_DURATION = 260
+LEVEL_FIVE_UPPER_LEFT_PRESSURE_PLATE_TILE = (1, 1)
+LEVEL_FIVE_UPPER_LEFT_BOULDER_SPAWN_TILE = (0, 9)
+LEVEL_FIVE_UPPER_LEFT_BOULDER_PATH = (LEVEL_FIVE_UPPER_LEFT_BOULDER_SPAWN_TILE, (1, 9), (1, 3), (3, 3), (4, 3))
+LEVEL_FIVE_UPPER_LEFT_BOULDER_RUBBLE_TILE = (3, 3)
+LEVEL_FIVE_AXE_PRESSURE_PLATE_TILE = (17, 10)
+# One axe sweeps across the three-tile lane on each marked row; direction
+# alternates to match the arrows in the reference image.
+LEVEL_FIVE_AXE_ROW_DIRECTIONS = ((20, 1), (22, -1), (24, 1), (26, -1), (28, 1))
+LEVEL_FIVE_SWINGING_AXES = tuple(
+    (row, 8, direction) for row, direction in LEVEL_FIVE_AXE_ROW_DIRECTIONS
+)
 LEVEL_FIVE_SECTIONS = {
     (0, 15): {"level": 6, "name": "North Cave", "maze": LEVEL_FIVE_NORTH_MAZE, "return": (0, 15)},
     (14, 0): {"level": 7, "name": "West Cave", "maze": LEVEL_FIVE_WEST_MAZE, "return": (14, 0)},
@@ -337,9 +384,18 @@ LEVEL_THREE_BUTTONS = [
 LEVEL_FOUR_PILLARS = ((14, 14), (14, 16), (16, 14), (16, 16))
 LEVEL_FOUR_GATE_TILE = (0, 15)
 LEVEL_FOUR_TORCHES = ((1, 30, "surface"), (18, 21, "surface"), (27, 0, "surface"), (28, 15, "surface"))
+LEVEL_FOUR_PRESSURE_PLATE_TILE = (25, 3)
+LEVEL_FOUR_BOULDER_SPAWN_TILE = (30, 3)
+LEVEL_FOUR_BOULDER_PATH = (
+    LEVEL_FOUR_BOULDER_SPAWN_TILE,
+    (27, 3), LEVEL_FOUR_PRESSURE_PLATE_TILE, (25, 1),
+    (13, 1), (13, 3), (11, 3), (11, 1), (7, 1),
+)
+LEVEL_FOUR_BOULDER_RUBBLE_TILE = (7, 1)
+LEVEL_FOUR_BOULDER_SPEED = CELL_SIZE * 1000 / PLAYER_KEY_REPEAT_INTERVAL_MS - 10
 
 
-def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_started_at=None, level_three=False, floor_texture=None, pillars=(), torches=(), carried_torch=False, lit_pillars=(), animation_time=0, walking=False, level_four_gate_slide_started_at=None, warm_cave=False, viewport_size=None, section_exit_tile=None, rocks=(), artifact_tile=None, section_portal_tiles=(), carrying_artifact=None, placed_artifacts=(), north_artifact_tile=None):
+def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_started_at=None, level_three=False, floor_texture=None, pillars=(), torches=(), carried_torch=False, lit_pillars=(), animation_time=0, walking=False, level_four_gate_slide_started_at=None, warm_cave=False, viewport_size=None, section_exit_tile=None, rocks=(), artifact_tile=None, section_portal_tiles=(), carrying_artifact=None, placed_artifacts=(), north_artifact_tile=None, east_artifact_tile=None, pressure_plate_tile=None, pressure_plate_pressed=False, boulder_path=(), boulder_started_at=None, boulder_speed=LEVEL_FIVE_BOULDER_SPEED, additional_boulder_traps=(), axe_pressure_plate_tile=None, axes_started_at=None, swinging_axes=(), arrow_dispenser_tiles=(), arrows=(), arrow_pressure_plate_tile=None, arrow_pressure_plate_pressed=False):
     """Draw a rocky cave maze with a dim, mottled stone floor."""
     maze_width = max(len(row) for row in maze) * CELL_SIZE
     maze_height = len(maze) * CELL_SIZE
@@ -451,6 +507,53 @@ def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_st
         pygame.draw.circle(screen, (163, 111, 57), center, 7 + pulse, 2)
         pygame.draw.circle(screen, (239, 186, 100), center, 2)
 
+    if pressure_plate_tile is not None:
+        plate_x = offset_x + pressure_plate_tile[1] * CELL_SIZE
+        plate_y = offset_y + pressure_plate_tile[0] * CELL_SIZE
+        draw_pressure_plate(screen, plate_x, plate_y, pressure_plate_pressed)
+
+    if boulder_path:
+        draw_boulder_trap(
+            screen, boulder_path, boulder_started_at, boulder_speed,
+            LEVEL_FIVE_BOULDER_RUBBLE_TILE, offset_x, offset_y,
+        )
+
+    for trap in additional_boulder_traps:
+        plate = trap["plate"]
+        draw_pressure_plate(
+            screen,
+            offset_x + plate[1] * CELL_SIZE,
+            offset_y + plate[0] * CELL_SIZE,
+            trap["started_at"] is not None,
+        )
+        draw_boulder_trap(
+            screen, trap["path"], trap["started_at"], trap["speed"],
+            trap["rubble"], offset_x, offset_y,
+        )
+
+    if axe_pressure_plate_tile is not None:
+        draw_pressure_plate(
+            screen,
+            offset_x + axe_pressure_plate_tile[1] * CELL_SIZE,
+            offset_y + axe_pressure_plate_tile[0] * CELL_SIZE,
+            axes_started_at is not None,
+        )
+    if axes_started_at is not None:
+        for row, column, phase in swinging_axes:
+            draw_swinging_axe(screen, row, column, phase, animation_time, offset_x, offset_y)
+
+    for row, column, direction in arrow_dispenser_tiles:
+        draw_arrow_dispenser(screen, row, column, direction, offset_x, offset_y)
+    if arrow_pressure_plate_tile is not None:
+        draw_pressure_plate(
+            screen,
+            offset_x + arrow_pressure_plate_tile[1] * CELL_SIZE,
+            offset_y + arrow_pressure_plate_tile[0] * CELL_SIZE,
+            arrow_pressure_plate_pressed,
+        )
+    for arrow_x, arrow_y, direction in arrows:
+        draw_flying_arrow(screen, arrow_x + offset_x, arrow_y + offset_y, direction)
+
     if artifact_tile is not None:
         draw_cave_medallion(
             screen,
@@ -463,6 +566,13 @@ def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_st
             screen,
             offset_x + north_artifact_tile[1] * CELL_SIZE,
             offset_y + north_artifact_tile[0] * CELL_SIZE,
+            animation_time,
+        )
+    if east_artifact_tile is not None:
+        draw_east_cave_artifact(
+            screen,
+            offset_x + east_artifact_tile[1] * CELL_SIZE,
+            offset_y + east_artifact_tile[0] * CELL_SIZE,
             animation_time,
         )
 
@@ -528,6 +638,12 @@ def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_st
             offset_x + player_column * CELL_SIZE,
             offset_y + character_y,
         )
+    elif carrying_artifact == "east":
+        draw_east_artifact_carried(
+            screen,
+            offset_x + player_column * CELL_SIZE,
+            offset_y + character_y,
+        )
     for row, column in rocks:
         draw_rounded_rock(screen, offset_x + column * CELL_SIZE, offset_y + row * CELL_SIZE)
     for artifact_name, tile in placed_artifacts:
@@ -537,6 +653,8 @@ def draw_maze(screen, maze, player_row, player_column, buttons=(), gate_slide_st
             draw_cave_medallion(screen, artifact_x, artifact_y, animation_time)
         elif artifact_name == "north":
             draw_north_cave_artifact(screen, artifact_x, artifact_y, animation_time)
+        elif artifact_name == "east":
+            draw_east_cave_artifact(screen, artifact_x, artifact_y, animation_time)
 
 
 def draw_flame(screen, x, y, animation_time, width=10, height=12):
@@ -594,6 +712,189 @@ def draw_rounded_rock(screen, x, y):
     pygame.draw.line(screen, (41, 29, 23), (x + 16, y + 12), (x + 18, y + 15), 1)
 
 
+def draw_pressure_plate(screen, x, y, pressed=False):
+    """Draw a small stone pressure plate in the path."""
+    pygame.draw.ellipse(screen, (24, 18, 16), (x + 3, y + 15, 19, 7))
+    pygame.draw.rect(screen, (53, 39, 31), (x + 4, y + 7, 17, 12))
+    plate_top = y + (10 if pressed else 7)
+    pygame.draw.rect(screen, (73, 57, 45), (x + 4, plate_top, 17, 9))
+    pygame.draw.rect(screen, (151, 110, 73), (x + 5, plate_top + 1, 15, 2))
+    pygame.draw.rect(screen, (36, 29, 26), (x + 6, plate_top + 4, 13, 3))
+    pygame.draw.circle(screen, (193, 143, 87), (x + 7, plate_top + 5), 1)
+    pygame.draw.circle(screen, (193, 143, 87), (x + 18, plate_top + 5), 1)
+    if pressed:
+        pygame.draw.line(screen, (255, 194, 98), (x + 8, plate_top + 3), (x + 17, plate_top + 3), 1)
+
+
+def draw_arrow_dispenser(screen, row, column, direction, offset_x=0, offset_y=0):
+    """Draw a metal arrow slot built into a corridor wall."""
+    x = offset_x + column * CELL_SIZE
+    y = offset_y + row * CELL_SIZE
+    center_y = y + CELL_SIZE // 2
+    if direction > 0:
+        body = pygame.Rect(x + 7, center_y - 7, 15, 14)
+        opening = pygame.Rect(x + 18, center_y - 3, 7, 6)
+    else:
+        body = pygame.Rect(x + 3, center_y - 7, 15, 14)
+        opening = pygame.Rect(x, center_y - 3, 7, 6)
+    pygame.draw.rect(screen, (38, 31, 27), body)
+    pygame.draw.rect(screen, (112, 82, 56), body, 2)
+    pygame.draw.rect(screen, (23, 21, 20), opening)
+    pygame.draw.line(screen, (176, 128, 78), (body.left + 3, body.top + 2), (body.right - 3, body.top + 2), 1)
+
+
+def draw_flying_arrow(screen, x, y, direction):
+    """Draw a small steel arrow in flight through the East Cave corridor."""
+    x, y = int(x), int(y)
+    tail_x = x - direction * 9
+    tip_x = x + direction * 9
+    pygame.draw.line(screen, (48, 35, 26), (tail_x, y + 1), (tip_x, y + 1), 3)
+    pygame.draw.line(screen, (151, 112, 72), (tail_x, y), (tip_x, y), 1)
+    pygame.draw.polygon(
+        screen,
+        (180, 187, 190),
+        ((tip_x, y), (tip_x - direction * 6, y - 4), (tip_x - direction * 6, y + 4)),
+    )
+
+
+def draw_rolling_boulder(screen, cx, cy):
+    """Draw the moving grey boulder with its pale centre mark."""
+    cx, cy = int(cx), int(cy)
+    pygame.draw.ellipse(screen, (24, 19, 17), (cx - 12, cy + 7, 24, 7))
+    points = (
+        (cx - 8, cy - 8), (cx - 2, cy - 11), (cx + 7, cy - 9),
+        (cx + 11, cy - 3), (cx + 10, cy + 6), (cx + 4, cy + 10),
+        (cx - 6, cy + 9), (cx - 11, cy + 3),
+    )
+    pygame.draw.polygon(screen, (65, 64, 60), points)
+    pygame.draw.lines(screen, (34, 33, 31), True, points, 2)
+    pygame.draw.polygon(screen, (116, 115, 108), ((cx - 7, cy - 7), (cx - 1, cy - 9), (cx + 5, cy - 7), (cx, cy - 2), (cx - 6, cy - 2)))
+    pygame.draw.circle(screen, (177, 177, 170), (cx + 2, cy - 1), 3)
+    pygame.draw.circle(screen, (218, 216, 207), (cx + 1, cy - 2), 1)
+    pygame.draw.line(screen, (42, 42, 39), (cx - 5, cy + 3), (cx - 1, cy + 6), 1)
+
+
+def draw_boulder_impact(screen, cx, cy):
+    """Draw a brief stone-chip burst where the boulder breaks against the wall."""
+    cx, cy = int(cx), int(cy)
+    pygame.draw.line(screen, (230, 194, 131), (cx - 8, cy - 5), (cx - 3, cy - 2), 2)
+    pygame.draw.line(screen, (230, 194, 131), (cx + 8, cy - 7), (cx + 3, cy - 3), 2)
+    pygame.draw.line(screen, (194, 177, 145), (cx - 7, cy + 5), (cx - 3, cy + 2), 2)
+    pygame.draw.line(screen, (194, 177, 145), (cx + 7, cy + 5), (cx + 3, cy + 2), 2)
+    pygame.draw.circle(screen, (177, 177, 170), (cx - 5, cy - 9), 2)
+    pygame.draw.circle(screen, (177, 177, 170), (cx + 6, cy + 8), 2)
+
+
+def draw_boulder_rubble(screen, x, y):
+    """Draw the lasting debris pile left after the boulder breaks."""
+    pygame.draw.ellipse(screen, (25, 21, 19), (x + 3, y + 15, 20, 7))
+    pygame.draw.polygon(screen, (67, 65, 60), ((x + 3, y + 16), (x + 5, y + 11), (x + 10, y + 12), (x + 12, y + 17)))
+    pygame.draw.polygon(screen, (86, 84, 78), ((x + 9, y + 17), (x + 12, y + 9), (x + 18, y + 10), (x + 20, y + 17)))
+    pygame.draw.polygon(screen, (58, 57, 53), ((x + 17, y + 17), (x + 19, y + 12), (x + 23, y + 14), (x + 22, y + 18)))
+    pygame.draw.polygon(screen, (117, 115, 106), ((x + 5, y + 13), (x + 7, y + 12), (x + 9, y + 15), (x + 5, y + 15)))
+    pygame.draw.line(screen, (135, 132, 121), (x + 13, y + 11), (x + 16, y + 12), 1)
+    pygame.draw.circle(screen, (44, 43, 40), (x + 8, y + 18), 1)
+
+
+def draw_boulder_trap(screen, path, started_at, speed, rubble_tile, offset_x=0, offset_y=0):
+    """Draw an activated boulder, its impact burst, or its lasting rubble."""
+    if started_at is None:
+        return
+    elapsed_ms = pygame.time.get_ticks() - started_at
+    boulder_position = get_boulder_position(path, elapsed_ms, speed, offset_x, offset_y)
+    if boulder_position is not None:
+        draw_rolling_boulder(screen, *boulder_position)
+        return
+    route_duration = get_boulder_path_length(path) * 1000 / speed
+    if elapsed_ms < route_duration + LEVEL_FIVE_BOULDER_IMPACT_DURATION:
+        impact_row, impact_column = path[-1]
+        impact_x = offset_x + impact_column * CELL_SIZE + CELL_SIZE // 2
+        impact_y = offset_y + impact_row * CELL_SIZE + CELL_SIZE // 2
+        draw_boulder_impact(screen, impact_x, impact_y)
+    else:
+        rubble_x = offset_x + rubble_tile[1] * CELL_SIZE
+        rubble_y = offset_y + rubble_tile[0] * CELL_SIZE
+        draw_boulder_rubble(screen, rubble_x, rubble_y)
+
+
+def get_swinging_axe_pose(row, column, phase, animation_time, offset_x=0, offset_y=0):
+    """Return the hinge, blade tip, and angle for a swinging axe."""
+    angle = math.sin(animation_time * 3.8 * phase) * 1.45
+    pivot = (
+        offset_x + column * CELL_SIZE + CELL_SIZE // 2,
+        offset_y + row * CELL_SIZE + 3,
+    )
+    length = CELL_SIZE
+    tip = (pivot[0] + math.sin(angle) * length, pivot[1] + math.cos(angle) * length)
+    return pivot, tip, angle
+
+
+def draw_swinging_axe(screen, row, column, phase, animation_time, offset_x=0, offset_y=0):
+    """Draw a pixel-art axe swinging beneath a stone ceiling hinge."""
+    pivot, tip, angle = get_swinging_axe_pose(row, column, phase, animation_time, offset_x, offset_y)
+    direction = (math.sin(angle), math.cos(angle))
+    perpendicular = (math.cos(angle), -math.sin(angle))
+    pygame.draw.rect(screen, (35, 29, 26), (pivot[0] - 4, pivot[1] - 2, 8, 4))
+    pygame.draw.rect(screen, (125, 94, 61), (pivot[0] - 2, pivot[1] - 1, 4, 2))
+    pygame.draw.line(screen, (43, 32, 26), pivot, (int(tip[0]), int(tip[1])), 3)
+    pygame.draw.line(screen, (157, 111, 67), (pivot[0], pivot[1] + 2), (int(tip[0]), int(tip[1])), 1)
+    head_center = (tip[0] + direction[0], tip[1] + direction[1])
+    def point(side, along):
+        return (
+            int(head_center[0] + perpendicular[0] * side + direction[0] * along),
+            int(head_center[1] + perpendicular[1] * side + direction[1] * along),
+        )
+    blade = (point(-7, -3), point(3, -5), point(7, -1), point(5, 3), point(-3, 4), point(-6, 1))
+    pygame.draw.polygon(screen, (39, 37, 35), blade)
+    pygame.draw.polygon(screen, (137, 143, 143), (point(-5, -2), point(2, -4), point(5, -1), point(3, 2), point(-3, 3)))
+    pygame.draw.line(screen, (218, 218, 205), point(-5, -2), point(2, -4), 1)
+
+
+def swinging_axe_hits_player(row, column, phase, animation_time, player_x, player_y):
+    """Check whether the swinging axe blade or handle overlaps the player."""
+    pivot, tip, angle = get_swinging_axe_pose(row, column, phase, animation_time)
+    head_x = tip[0] + math.sin(angle)
+    head_y = tip[1] + math.cos(angle)
+    dx = tip[0] - pivot[0]
+    dy = tip[1] - pivot[1]
+    segment_length_squared = dx * dx + dy * dy
+    projection = ((player_x - pivot[0]) * dx + (player_y - pivot[1]) * dy) / segment_length_squared
+    projection = max(0, min(1, projection))
+    closest_x = pivot[0] + projection * dx
+    closest_y = pivot[1] + projection * dy
+    handle_distance_squared = (player_x - closest_x) ** 2 + (player_y - closest_y) ** 2
+    blade_distance_squared = (player_x - head_x) ** 2 + (player_y - head_y) ** 2
+    return handle_distance_squared <= 6 ** 2 or blade_distance_squared <= 10 ** 2
+
+
+def get_boulder_position(path, elapsed_ms, speed, offset_x=0, offset_y=0):
+    """Interpolate the boulder's screen position along a row-column path."""
+    points = [
+        (offset_x + column * CELL_SIZE + CELL_SIZE // 2, offset_y + row * CELL_SIZE + CELL_SIZE // 2)
+        for row, column in path
+    ]
+    distance_left = max(0, elapsed_ms) * speed / 1000
+    for start, end in zip(points, points[1:]):
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        segment_length = (dx * dx + dy * dy) ** 0.5
+        if distance_left <= segment_length:
+            fraction = distance_left / segment_length if segment_length else 0
+            return start[0] + dx * fraction, start[1] + dy * fraction
+        distance_left -= segment_length
+    return None
+
+
+def get_boulder_path_length(path):
+    """Return the complete boulder route length in pixels."""
+    total = 0
+    for (start_row, start_column), (end_row, end_column) in zip(path, path[1:]):
+        row_delta = end_row - start_row
+        column_delta = end_column - start_column
+        total += (row_delta * row_delta + column_delta * column_delta) ** 0.5 * CELL_SIZE
+    return total
+
+
 def draw_cave_medallion(screen, x, y, animation_time=0):
     """Draw the small gold-rimmed cave artifact shown in the West Cave reference."""
     cx = x + CELL_SIZE // 2
@@ -621,12 +922,44 @@ def draw_north_cave_artifact(screen, x, y, animation_time=0):
     pygame.draw.circle(screen, (116, 220, 196), (cx + 8, cy - 7), 1)
 
 
+def draw_east_cave_artifact(screen, x, y, animation_time=0):
+    """Draw a violet stormglass relic on a dark stone base."""
+    cx = x + CELL_SIZE // 2
+    cy = y + CELL_SIZE // 2 + int(animation_time * 2) % 2
+    pygame.draw.ellipse(screen, (24, 18, 20), (cx - 10, cy + 6, 20, 5))
+    pygame.draw.ellipse(screen, (45, 38, 62), (cx - 8, cy + 3, 16, 6))
+    pygame.draw.ellipse(screen, (118, 91, 145), (cx - 7, cy + 3, 14, 4), 1)
+    crystal = ((cx, cy - 12), (cx + 7, cy - 7), (cx + 10, cy - 1), (cx + 6, cy + 7), (cx, cy + 10), (cx - 6, cy + 7), (cx - 10, cy - 1), (cx - 7, cy - 7))
+    pygame.draw.polygon(screen, (70, 48, 112), crystal)
+    pygame.draw.polygon(screen, (135, 98, 190), ((cx, cy - 10), (cx + 5, cy - 6), (cx + 7, cy - 1), (cx + 4, cy + 5), (cx, cy + 7)))
+    pygame.draw.polygon(screen, (185, 154, 232), ((cx - 1, cy - 8), (cx - 5, cy - 5), (cx - 7, cy - 1), (cx - 4, cy + 4), (cx - 1, cy + 5)))
+    pygame.draw.polygon(screen, (255, 213, 116), ((cx + 2, cy - 8), (cx - 2, cy - 1), (cx + 1, cy - 1), (cx - 2, cy + 6), (cx + 5, cy - 3), (cx + 1, cy - 3)))
+    pygame.draw.line(screen, (255, 242, 183), (cx + 1, cy - 7), (cx - 1, cy - 2), 1)
+    pygame.draw.polygon(screen, (236, 224, 255), ((cx - 5, cy - 5), (cx - 2, cy - 7), (cx - 1, cy - 5), (cx - 3, cy - 2)))
+    pygame.draw.line(screen, (255, 255, 255), (cx - 5, cy - 5), (cx - 3, cy - 3), 1)
+    pygame.draw.circle(screen, (255, 255, 240), (cx + 6, cy - 7), 1)
+    pygame.draw.line(screen, (229, 249, 255), (cx + 8, cy - 5), (cx + 8, cy - 2), 1)
+    pygame.draw.line(screen, (229, 249, 255), (cx + 7, cy - 4), (cx + 9, cy - 4), 1)
+
+
 def draw_north_artifact_carried(screen, x, y):
     """Draw the turquoise crystal in the character's hand without its stone mount."""
     cx, cy = x + 20, y + 9
     pygame.draw.polygon(screen, (29, 104, 103), ((cx, cy - 7), (cx + 4, cy - 2), (cx + 3, cy + 4), (cx - 2, cy + 3), (cx - 4, cy - 2)))
     pygame.draw.polygon(screen, (80, 197, 179), ((cx, cy - 5), (cx + 2, cy - 1), (cx, cy + 2), (cx - 2, cy - 2)))
     pygame.draw.line(screen, (201, 255, 234), (cx, cy - 5), (cx + 1, cy - 2), 1)
+
+
+def draw_east_artifact_carried(screen, x, y):
+    """Draw the violet stormglass relic in the character's hand."""
+    cx, cy = x + 20, y + 8
+    pygame.draw.polygon(screen, (70, 48, 112), ((cx, cy - 7), (cx + 4, cy - 4), (cx + 6, cy), (cx + 3, cy + 5), (cx, cy + 7), (cx - 4, cy + 4), (cx - 6, cy), (cx - 4, cy - 4)))
+    pygame.draw.polygon(screen, (144, 108, 198), ((cx, cy - 5), (cx + 3, cy - 3), (cx + 4, cy), (cx + 2, cy + 4), (cx, cy + 5)))
+    pygame.draw.polygon(screen, (205, 177, 241), ((cx - 1, cy - 4), (cx - 4, cy - 2), (cx - 4, cy + 1), (cx - 1, cy + 3)))
+    pygame.draw.polygon(screen, (255, 213, 116), ((cx + 1, cy - 4), (cx - 2, cy), (cx, cy), (cx - 2, cy + 4), (cx + 3, cy - 1), (cx, cy - 1)))
+    pygame.draw.line(screen, (255, 242, 183), (cx, cy - 3), (cx - 1, cy - 1), 1)
+    pygame.draw.line(screen, (240, 231, 255), (cx - 3, cy - 3), (cx - 1, cy - 4), 1)
+    pygame.draw.circle(screen, (255, 255, 240), (cx + 4, cy - 4), 1)
 
 
 def draw_torch(screen, x, y, wall_side="surface", animation_time=0):
@@ -797,12 +1130,13 @@ def draw_character(screen, x, y, animation_time=0, walking=False, walk_frame=0):
 
 def main():
     pygame.init()
-    pygame.key.set_repeat(180, 130)
+    pygame.key.set_repeat(180, PLAYER_KEY_REPEAT_INTERVAL_MS)
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     floor_texture = make_level_three_floor()
     warm_cave_floor_texture = make_warm_cave_floor()
     warm_cave_section_floor_texture = make_warm_cave_floor(16 * CELL_SIZE, 16 * CELL_SIZE)
     small_section_surface = pygame.Surface((16 * CELL_SIZE, 16 * CELL_SIZE))
+    transition_font = pygame.font.Font(None, 46)
     pygame.display.set_caption("Arcade Maze")
     clock = pygame.time.Clock()
     running = True
@@ -820,6 +1154,16 @@ def main():
     section_exit_armed = False
     carrying_cave_artifact = None
     placed_cave_artifacts = {}
+    game_finished = False
+    boulder_started_at = None
+    upper_left_boulder_started_at = None
+    level_four_boulder_started_at = None
+    axes_started_at = None
+    east_arrows = []
+    east_arrows_last_fired_at = None
+    east_arrows_last_updated_at = None
+    level_transition_started_at = None
+    level_transition_title = ""
     last_move_at = 0
     pygame.display.set_caption(f"Arcade Maze - Level {level}")
     movement = {
@@ -829,10 +1173,17 @@ def main():
         pygame.K_d: (0, 1),
     }
 
+    def begin_level_transition(title):
+        nonlocal level_transition_started_at, level_transition_title
+        level_transition_started_at = pygame.time.get_ticks()
+        level_transition_title = title
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN and (level_transition_started_at is not None or game_finished):
+                continue
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_1:
                 level = 1
                 maze = MAZE
@@ -867,6 +1218,7 @@ def main():
                 lit_pillars = set()
                 level_four_gate_slide_started_at = None
                 section_exit_armed = False
+                level_four_boulder_started_at = None
                 pygame.display.set_caption(f"Arcade Maze - Level {level}")
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_5:
                 level = 5
@@ -880,6 +1232,10 @@ def main():
                 lit_pillars = set()
                 level_four_gate_slide_started_at = None
                 section_exit_armed = False
+                boulder_started_at = None
+                upper_left_boulder_started_at = None
+                level_four_boulder_started_at = None
+                axes_started_at = None
                 pygame.display.set_caption(f"Arcade Maze - Level {level}")
             elif event.type == pygame.KEYDOWN and event.key in (pygame.K_6, pygame.K_7, pygame.K_8):
                 level = event.key - pygame.K_0
@@ -892,6 +1248,9 @@ def main():
                 carrying_torch = False
                 lit_pillars = set()
                 section_exit_armed = False
+                east_arrows = []
+                east_arrows_last_fired_at = None
+                east_arrows_last_updated_at = None
                 pygame.display.set_caption(f"Arcade Maze - Level 5: {section['name']}")
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                 target = (player_row + player_facing[0], player_column + player_facing[1])
@@ -950,17 +1309,60 @@ def main():
                     player_row = next_row
                     player_column = next_column
                     last_move_at = pygame.time.get_ticks()
+                    if (
+                        level == 8
+                        and (player_row, player_column) == LEVEL_FIVE_EAST_ARROW_PRESSURE_PLATE_TILE
+                        and east_arrows_last_fired_at is None
+                    ):
+                        east_arrows_last_updated_at = pygame.time.get_ticks()
+                        east_arrows_last_fired_at = (
+                            east_arrows_last_updated_at - LEVEL_FIVE_EAST_ARROW_INTERVAL_MS
+                        )
+                    elif (
+                        level == 4
+                        and (player_row, player_column) == LEVEL_FOUR_PRESSURE_PLATE_TILE
+                        and level_four_boulder_started_at is None
+                    ):
+                        level_four_boulder_started_at = pygame.time.get_ticks()
+                    elif (
+                        level == 5
+                        and (player_row, player_column) == LEVEL_FIVE_PRESSURE_PLATE_TILE
+                        and boulder_started_at is None
+                    ):
+                        boulder_started_at = pygame.time.get_ticks()
+                    elif (
+                        level == 5
+                        and (player_row, player_column) == LEVEL_FIVE_UPPER_LEFT_PRESSURE_PLATE_TILE
+                        and upper_left_boulder_started_at is None
+                    ):
+                        upper_left_boulder_started_at = pygame.time.get_ticks()
+                    if (
+                        level == 5
+                        and (player_row, player_column) == LEVEL_FIVE_AXE_PRESSURE_PLATE_TILE
+                        and axes_started_at is None
+                    ):
+                        axes_started_at = pygame.time.get_ticks()
                     if carrying_cave_artifact is None:
                         if level == 7 and (player_row, player_column) == WEST_CAVE_ARTIFACT_TILE and "west" not in placed_cave_artifacts:
                             carrying_cave_artifact = "west"
                         elif level == 6 and (player_row, player_column) == NORTH_CAVE_ARTIFACT_TILE and "north" not in placed_cave_artifacts:
                             carrying_cave_artifact = "north"
-                    if (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 1:
+                        elif level == 8 and (player_row, player_column) == EAST_CAVE_ARTIFACT_TILE and "east" not in placed_cave_artifacts:
+                            carrying_cave_artifact = "east"
+                    if (
+                        level == 5
+                        and (player_row, player_column) == (LEVEL_FIVE_EXIT_ROW, LEVEL_FIVE_EXIT_COLUMN)
+                        and len(placed_cave_artifacts) == len(LEVEL_FIVE_ROCKS)
+                    ):
+                        game_finished = True
+                        begin_level_transition("Game Finished!")
+                    elif (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 1:
                         level = 2
                         maze = generate_new_maze()
                         player_row = START_ROW
                         player_column = START_COLUMN
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                        begin_level_transition(f"Level {level}")
                     elif (player_row, player_column) == (EXIT_ROW, LEVEL_TWO_EXIT_COLUMN) and level == 2:
                         level = 3
                         maze = LEVEL_THREE_MAZE.copy()
@@ -970,6 +1372,7 @@ def main():
                         buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
                         gate_slide_started_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                        begin_level_transition(f"Level {level}")
                     elif (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 3:
                         level = 4
                         maze = LEVEL_FOUR_MAZE.copy()
@@ -982,7 +1385,9 @@ def main():
                         carrying_torch = False
                         lit_pillars = set()
                         level_four_gate_slide_started_at = None
+                        level_four_boulder_started_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                        begin_level_transition(f"Level {level}")
                     elif (player_row, player_column) == LEVEL_FOUR_GATE_TILE and level == 4:
                         level = 5
                         maze = LEVEL_FIVE_MAZE.copy()
@@ -994,7 +1399,12 @@ def main():
                         lit_pillars = set()
                         level_four_gate_slide_started_at = None
                         section_exit_armed = False
+                        boulder_started_at = None
+                        upper_left_boulder_started_at = None
+                        level_four_boulder_started_at = None
+                        axes_started_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                        begin_level_transition(f"Level {level}")
                     elif level == 5 and (player_row, player_column) in LEVEL_FIVE_SECTIONS:
                         section = LEVEL_FIVE_SECTIONS[(player_row, player_column)]
                         level = section["level"]
@@ -1006,7 +1416,11 @@ def main():
                         carrying_torch = False
                         lit_pillars = set()
                         section_exit_armed = False
+                        east_arrows = []
+                        east_arrows_last_fired_at = None
+                        east_arrows_last_updated_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level 5: {section['name']}")
+                        begin_level_transition(f"Level 5: {section['name']}")
                     elif level in LEVEL_FIVE_SECTIONS_BY_LEVEL:
                         section = LEVEL_FIVE_SECTIONS_BY_LEVEL[level]
                         if previous_position == LEVEL_FIVE_SECTION_START:
@@ -1017,6 +1431,9 @@ def main():
                         ):
                             level = 5
                             maze = LEVEL_FIVE_MAZE.copy()
+                            east_arrows = []
+                            east_arrows_last_fired_at = None
+                            east_arrows_last_updated_at = None
                             player_row, player_column = section["return"]
                             section_exit_armed = False
                             if player_row == 0:
@@ -1028,10 +1445,127 @@ def main():
                             else:
                                 player_facing = (0, -1)
                             pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                            begin_level_transition("Level 5")
+
+        if (
+            level == 8
+            and level_transition_started_at is None
+            and east_arrows_last_fired_at is not None
+        ):
+            now = pygame.time.get_ticks()
+            while now - east_arrows_last_fired_at >= LEVEL_FIVE_EAST_ARROW_INTERVAL_MS:
+                east_arrows_last_fired_at += LEVEL_FIVE_EAST_ARROW_INTERVAL_MS
+                for row, column, direction in LEVEL_FIVE_EAST_ARROW_DISPENSERS:
+                    east_arrows.append({
+                        "x": (column + 1) * CELL_SIZE if direction > 0 else column * CELL_SIZE,
+                        "y": row * CELL_SIZE + CELL_SIZE // 2,
+                        "direction": direction,
+                    })
+
+            elapsed_seconds = (now - east_arrows_last_updated_at) / 1000
+            east_arrows_last_updated_at = now
+            for arrow in east_arrows:
+                arrow["x"] += arrow["direction"] * LEVEL_FIVE_EAST_ARROW_SPEED * elapsed_seconds
+            east_arrows = [
+                arrow for arrow in east_arrows
+                if 11 * CELL_SIZE <= arrow["x"] <= 15 * CELL_SIZE
+            ]
+
+            player_x = player_column * CELL_SIZE + CELL_SIZE // 2
+            player_y = player_row * CELL_SIZE + CELL_SIZE // 2
+            if any(
+                abs(arrow["x"] - player_x) <= CELL_SIZE * 0.8
+                and abs(arrow["y"] - player_y) <= CELL_SIZE * 0.48
+                for arrow in east_arrows
+            ):
+                level = 5
+                maze = LEVEL_FIVE_MAZE.copy()
+                player_row = LEVEL_FIVE_START_ROW
+                player_column = LEVEL_FIVE_START_COLUMN
+                player_facing = (-1, 0)
+                section_exit_armed = False
+                boulder_started_at = None
+                upper_left_boulder_started_at = None
+                axes_started_at = None
+                carrying_cave_artifact = None
+                placed_cave_artifacts = {}
+                east_arrows = []
+                east_arrows_last_fired_at = None
+                east_arrows_last_updated_at = None
+                last_move_at = now
+                pygame.display.set_caption("Arcade Maze - Level 5")
+                begin_level_transition("You Died")
+
+        if level in (4, 5) and not game_finished:
+            active_boulders = (
+                ((LEVEL_FOUR_BOULDER_PATH, level_four_boulder_started_at, LEVEL_FOUR_BOULDER_SPEED),)
+                if level == 4 else
+                (
+                    (LEVEL_FIVE_BOULDER_PATH, boulder_started_at, LEVEL_FIVE_BOULDER_SPEED),
+                    (LEVEL_FIVE_UPPER_LEFT_BOULDER_PATH, upper_left_boulder_started_at, LEVEL_FIVE_BOULDER_SPEED),
+                )
+            )
+            player_x = player_column * CELL_SIZE + CELL_SIZE // 2
+            player_y = player_row * CELL_SIZE + CELL_SIZE // 2
+            collision_distance = CELL_SIZE * 0.72
+            for path, started_at, speed in active_boulders:
+                if started_at is None:
+                    continue
+                boulder_position = get_boulder_position(
+                    path, pygame.time.get_ticks() - started_at, speed
+                )
+                if boulder_position is None:
+                    continue
+                boulder_x, boulder_y = boulder_position
+                if (boulder_x - player_x) ** 2 + (boulder_y - player_y) ** 2 <= collision_distance ** 2:
+                    if level == 4:
+                        maze = LEVEL_FOUR_MAZE.copy()
+                        player_row = START_ROW
+                        player_column = START_COLUMN
+                        level_four_boulder_started_at = None
+                        torches = list(LEVEL_FOUR_TORCHES)
+                        carrying_torch = False
+                        lit_pillars = set()
+                    else:
+                        maze = LEVEL_FIVE_MAZE.copy()
+                        player_row = LEVEL_FIVE_START_ROW
+                        player_column = LEVEL_FIVE_START_COLUMN
+                        boulder_started_at = None
+                        upper_left_boulder_started_at = None
+                        axes_started_at = None
+                        section_exit_armed = False
+                    player_facing = (-1, 0)
+                    last_move_at = pygame.time.get_ticks()
+                    pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                    begin_level_transition("You Died")
+                    break
+            if axes_started_at is not None:
+                animation_time = pygame.time.get_ticks() / 1000
+                if any(
+                    swinging_axe_hits_player(
+                        row, column, phase, animation_time, player_x, player_y
+                    )
+                    for row, column, phase in LEVEL_FIVE_SWINGING_AXES
+                    if player_row == row
+                ):
+                    maze = LEVEL_FIVE_MAZE.copy()
+                    player_row = LEVEL_FIVE_START_ROW
+                    player_column = LEVEL_FIVE_START_COLUMN
+                    player_facing = (-1, 0)
+                    boulder_started_at = None
+                    upper_left_boulder_started_at = None
+                    axes_started_at = None
+                    section_exit_armed = False
+                    last_move_at = pygame.time.get_ticks()
+                    pygame.display.set_caption(f"Arcade Maze - Level {level}")
+                    begin_level_transition("You Died")
 
         small_section = level in LEVEL_FIVE_SECTIONS_BY_LEVEL
         section_view_size = (len(maze[0]) * CELL_SIZE, len(maze) * CELL_SIZE) if small_section else None
         maze_surface = small_section_surface if small_section else screen
+        level_five_portal_tiles = tuple(LEVEL_FIVE_SECTIONS) if level == 5 else ()
+        if level == 5 and len(placed_cave_artifacts) == len(LEVEL_FIVE_ROCKS):
+            level_five_portal_tiles += ((LEVEL_FIVE_EXIT_ROW, LEVEL_FIVE_EXIT_COLUMN),)
         draw_maze(
             maze_surface,
             maze,
@@ -1054,12 +1588,77 @@ def main():
             rocks=LEVEL_FIVE_ROCKS if level == 5 else (),
             artifact_tile=WEST_CAVE_ARTIFACT_TILE if level == 7 and carrying_cave_artifact != "west" and "west" not in placed_cave_artifacts else None,
             north_artifact_tile=NORTH_CAVE_ARTIFACT_TILE if level == 6 and carrying_cave_artifact != "north" and "north" not in placed_cave_artifacts else None,
-            section_portal_tiles=tuple(LEVEL_FIVE_SECTIONS) if level == 5 else (),
+            east_artifact_tile=EAST_CAVE_ARTIFACT_TILE if level == 8 and carrying_cave_artifact != "east" and "east" not in placed_cave_artifacts else None,
+            section_portal_tiles=level_five_portal_tiles,
             carrying_artifact=carrying_cave_artifact,
             placed_artifacts=tuple(placed_cave_artifacts.items()) if level == 5 else (),
+            pressure_plate_tile=LEVEL_FIVE_PRESSURE_PLATE_TILE if level == 5 else None,
+            pressure_plate_pressed=boulder_started_at is not None if level == 5 else False,
+            boulder_path=LEVEL_FIVE_BOULDER_PATH if level == 5 else (),
+            boulder_started_at=boulder_started_at if level == 5 else None,
+            axe_pressure_plate_tile=LEVEL_FIVE_AXE_PRESSURE_PLATE_TILE if level == 5 else None,
+            axes_started_at=axes_started_at if level == 5 else None,
+            swinging_axes=LEVEL_FIVE_SWINGING_AXES if level == 5 else (),
+            arrow_dispenser_tiles=LEVEL_FIVE_EAST_ARROW_DISPENSERS if level == 8 else (),
+            arrows=tuple(
+                (arrow["x"], arrow["y"], arrow["direction"])
+                for arrow in east_arrows
+            ) if level == 8 else (),
+            arrow_pressure_plate_tile=LEVEL_FIVE_EAST_ARROW_PRESSURE_PLATE_TILE if level == 8 else None,
+            arrow_pressure_plate_pressed=east_arrows_last_fired_at is not None if level == 8 else False,
+            additional_boulder_traps=(
+                ({
+                    "plate": LEVEL_FOUR_PRESSURE_PLATE_TILE,
+                    "path": LEVEL_FOUR_BOULDER_PATH,
+                    "started_at": level_four_boulder_started_at,
+                    "speed": LEVEL_FOUR_BOULDER_SPEED,
+                    "rubble": LEVEL_FOUR_BOULDER_RUBBLE_TILE,
+                },) if level == 4 else ()
+            ) + (
+                ({
+                    "plate": LEVEL_FIVE_UPPER_LEFT_PRESSURE_PLATE_TILE,
+                    "path": LEVEL_FIVE_UPPER_LEFT_BOULDER_PATH,
+                    "started_at": upper_left_boulder_started_at,
+                    "speed": LEVEL_FIVE_BOULDER_SPEED,
+                    "rubble": LEVEL_FIVE_UPPER_LEFT_BOULDER_RUBBLE_TILE,
+                },) if level == 5 else ()
+            ),
         )
         if small_section:
             screen.blit(pygame.transform.scale(maze_surface, screen.get_size()), (0, 0))
+
+        if level_transition_started_at is not None:
+            transition_elapsed = pygame.time.get_ticks() - level_transition_started_at
+            cover_end = LEVEL_TRANSITION_COVER_DURATION
+            hold_end = cover_end + LEVEL_TRANSITION_HOLD_DURATION
+            reveal_end = hold_end + LEVEL_TRANSITION_REVEAL_DURATION
+            screen_width, screen_height = screen.get_size()
+            if transition_elapsed < cover_end:
+                black_height = int(screen_height * transition_elapsed / cover_end)
+                pygame.draw.rect(screen, (0, 0, 0), (0, screen_height - black_height, screen_width, black_height))
+            elif transition_elapsed < hold_end:
+                screen.fill((0, 0, 0))
+                title_surface = transition_font.render(level_transition_title, True, (255, 211, 126))
+                title_rect = title_surface.get_rect(center=(screen_width // 2, screen_height // 2))
+                shadow_surface = transition_font.render(level_transition_title, True, (77, 51, 35))
+                screen.blit(shadow_surface, title_rect.move(2, 3))
+                screen.blit(title_surface, title_rect)
+            elif transition_elapsed < reveal_end:
+                reveal_elapsed = transition_elapsed - hold_end
+                black_height = int(screen_height * (1 - reveal_elapsed / LEVEL_TRANSITION_REVEAL_DURATION))
+                pygame.draw.rect(screen, (0, 0, 0), (0, 0, screen_width, black_height))
+            else:
+                level_transition_started_at = None
+
+        if game_finished and level_transition_started_at is None:
+            screen_width, screen_height = screen.get_size()
+            screen.fill((0, 0, 0))
+            title_surface = transition_font.render("Game Finished!", True, (255, 211, 126))
+            title_rect = title_surface.get_rect(center=(screen_width // 2, screen_height // 2))
+            shadow_surface = transition_font.render("Game Finished!", True, (77, 51, 35))
+            screen.blit(shadow_surface, title_rect.move(2, 3))
+            screen.blit(title_surface, title_rect)
+
         pygame.display.flip()
         clock.tick(60)
 
