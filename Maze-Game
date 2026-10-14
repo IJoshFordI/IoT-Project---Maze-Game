@@ -7,9 +7,13 @@ the drawing helpers and main game loop follow them.
 """
 
 import math
+import queue
 import random
+import threading
 
 import pygame
+
+from cyber_questions import generate_question
 
 
 CELL_SIZE = 25
@@ -123,6 +127,7 @@ MAZE = ["".join(row) for row in maze_tiles]
 # Size the window to the complete maze so there is no surrounding black border.
 WINDOW_WIDTH = maze_width * CELL_SIZE
 WINDOW_HEIGHT = len(MAZE) * CELL_SIZE
+WINDOW_SCALE = 1.56
 
 
 # Each later map uses the same row/column tile coordinates as the main map.
@@ -171,9 +176,9 @@ LEVEL_THREE_START_ROW = START_ROW
 LEVEL_THREE_START_COLUMN = START_COLUMN
 GATE_TILE = (17, 15)
 GATE_SLIDE_DURATION = 450
-LEVEL_TRANSITION_COVER_DURATION = 400
-LEVEL_TRANSITION_HOLD_DURATION = 650
-LEVEL_TRANSITION_REVEAL_DURATION = 400
+LEVEL_TRANSITION_COVER_DURATION = 520
+LEVEL_TRANSITION_HOLD_DURATION = 720
+LEVEL_TRANSITION_REVEAL_DURATION = 560
 LEVEL_THREE_MAZE = [
     "###############################",
     "#           #                 #",
@@ -1250,10 +1255,39 @@ def draw_character(screen, x, y, animation_time=0, walking=False, walk_frame=0):
     pygame.draw.rect(screen, SHOE_DARK_BLUE, (x + 7 * pixel, y + 9 * pixel + right_lift, 4 * pixel, pixel))
 
 
+def wrap_text_lines(text, font, max_width):
+    """Wrap text to a pixel width, including breaking unusually long words."""
+    lines = []
+    current_line = ""
+    for word in str(text).split():
+        candidate = f"{current_line} {word}".strip()
+        if font.size(candidate)[0] <= max_width:
+            current_line = candidate
+            continue
+
+        if current_line:
+            lines.append(current_line)
+            current_line = ""
+        for character in word:
+            candidate = current_line + character
+            if current_line and font.size(candidate)[0] > max_width:
+                lines.append(current_line)
+                current_line = character
+            else:
+                current_line = candidate
+    if current_line:
+        lines.append(current_line)
+    return lines or [""]
+
+
 def main():
     pygame.init()
     pygame.key.set_repeat(180, PLAYER_KEY_REPEAT_INTERVAL_MS)
-    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    display_surface = pygame.display.set_mode((
+        int(WINDOW_WIDTH * WINDOW_SCALE),
+        int(WINDOW_HEIGHT * WINDOW_SCALE),
+    ))
+    screen = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
     # Build static floor textures once; their stone patterns do not change
     # during play, so they do not need to be recreated every frame.
     floor_texture = make_level_three_floor()
@@ -1299,6 +1333,14 @@ def main():
     quiz_reason = ""
     quiz_difficulty = ""
     quiz_feedback = ""
+    quiz_question = None
+    quiz_selected_option = 0
+    question_cache = {difficulty: [] for difficulty in ("Easy", "Medium", "Hard")}
+    question_cache_target = 2
+    question_cache_lock = threading.Lock()
+    question_generation_queue = queue.Queue()
+    question_generation_in_progress = set()
+    question_generation_errors = {}
     quiz_started_at = None
     score = 0
     last_move_at = 0
@@ -1310,6 +1352,43 @@ def main():
         pygame.K_d: (0, 1),
     }
 
+    def queue_question_generation(difficulty):
+        """Preload a small question buffer for this difficulty in the background."""
+        with question_cache_lock:
+            if (
+                len(question_cache[difficulty])
+                + (difficulty in question_generation_in_progress)
+                >= question_cache_target
+            ):
+                return
+            question_generation_in_progress.add(difficulty)
+            question_generation_errors.pop(difficulty, None)
+        question_generation_queue.put(difficulty)
+
+    def question_generation_worker():
+        while True:
+            difficulty = question_generation_queue.get()
+            try:
+                question = generate_question(difficulty)
+            except Exception as error:
+                with question_cache_lock:
+                    question_generation_errors[difficulty] = str(error)
+                    question_generation_in_progress.discard(difficulty)
+            else:
+                with question_cache_lock:
+                    question_cache[difficulty].append(question)
+                    question_generation_errors.pop(difficulty, None)
+                    question_generation_in_progress.discard(difficulty)
+                queue_question_generation(difficulty)
+            finally:
+                question_generation_queue.task_done()
+
+    threading.Thread(target=question_generation_worker, daemon=True).start()
+    # Warm every difficulty while the player is exploring, then replenish its
+    # two-question buffer as soon as the buffer drops.
+    for question_difficulty in question_cache:
+        queue_question_generation(question_difficulty)
+
     def begin_level_transition(title, quiz_reason=None):
         nonlocal level_transition_started_at, level_transition_title, pending_quiz_reason
         level_transition_started_at = pygame.time.get_ticks()
@@ -1319,11 +1398,36 @@ def main():
 
     def begin_quiz(reason):
         nonlocal quiz_phase, quiz_reason, quiz_difficulty, quiz_feedback, quiz_started_at
-        quiz_phase = "difficulty"
+        nonlocal quiz_question, quiz_selected_option
         quiz_reason = reason
+        quiz_phase = "difficulty"
         quiz_difficulty = ""
         quiz_feedback = ""
+        quiz_selected_option = 0
         quiz_started_at = pygame.time.get_ticks()
+        quiz_question = None
+
+    def choose_quiz_difficulty(difficulty):
+        nonlocal quiz_phase, quiz_difficulty, quiz_question, quiz_selected_option
+        quiz_difficulty = difficulty
+        load_next_quiz_question()
+
+    def load_next_quiz_question():
+        nonlocal quiz_phase, quiz_question, quiz_selected_option
+        quiz_selected_option = 0
+        quiz_question = None
+        with question_cache_lock:
+            if question_cache[quiz_difficulty]:
+                quiz_question = question_cache[quiz_difficulty].pop(0)
+            generation_error = question_generation_errors.get(quiz_difficulty)
+        if quiz_question is not None:
+            quiz_phase = "question"
+            queue_question_generation(quiz_difficulty)
+        elif generation_error:
+            quiz_phase = "error"
+        else:
+            quiz_phase = "loading"
+            queue_question_generation(quiz_difficulty)
 
     def close_quiz():
         nonlocal quiz_phase, quiz_started_at
@@ -1388,6 +1492,20 @@ def main():
         begin_level_transition("You Died", quiz_reason="Player died")
 
     while running:
+        if quiz_phase == "loading":
+            with question_cache_lock:
+                if question_cache[quiz_difficulty]:
+                    quiz_question = question_cache[quiz_difficulty].pop(0)
+                    generation_error = None
+                else:
+                    generation_error = question_generation_errors.get(quiz_difficulty)
+            if quiz_question is not None:
+                quiz_phase = "question"
+                quiz_selected_option = 0
+                queue_question_generation(quiz_difficulty)
+            elif generation_error:
+                quiz_phase = "error"
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -1398,25 +1516,50 @@ def main():
                 continue
             elif event.type == pygame.KEYDOWN and quiz_phase is not None:
                 if quiz_phase == "difficulty":
-                    difficulties = {
-                        pygame.K_1: "Easy",
-                        pygame.K_2: "Medium",
-                        pygame.K_3: "Hard",
-                    }
-                    if event.key in difficulties:
-                        quiz_difficulty = difficulties[event.key]
-                        quiz_phase = "question"
-                elif quiz_phase == "question" and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
-                    quiz_phase = "answer"
-                elif quiz_phase == "answer":
-                    if event.key == pygame.K_y:
-                        score += 10
-                        quiz_feedback = "Correct! Reward: 10 points"
-                        quiz_phase = "result"
-                    elif event.key == pygame.K_n:
-                        score -= 10
-                        quiz_feedback = "Incorrect. Deducted 10 points"
-                        quiz_phase = "result"
+                    if event.key in (pygame.K_w, pygame.K_a):
+                        quiz_selected_option = max(0, quiz_selected_option - 1)
+                    elif event.key in (pygame.K_s, pygame.K_d):
+                        quiz_selected_option = min(2, quiz_selected_option + 1)
+                    if event.key in (pygame.K_e, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                        choose_quiz_difficulty(("Easy", "Medium", "Hard")[quiz_selected_option])
+                elif quiz_phase == "question":
+                    row, column = divmod(quiz_selected_option, 2)
+                    if event.key == pygame.K_w:
+                        row = max(0, row - 1)
+                    elif event.key == pygame.K_s:
+                        row = min(1, row + 1)
+                    elif event.key == pygame.K_a:
+                        column = max(0, column - 1)
+                    elif event.key == pygame.K_d:
+                        column = min(1, column + 1)
+                    elif event.key in (pygame.K_e, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                        selected_answer = "ABCD"[quiz_selected_option]
+                        reward = {"Easy": 10, "Medium": 25, "Hard": 50}[quiz_difficulty]
+                        if selected_answer == quiz_question["correct_answer"]:
+                            score += reward
+                            quiz_feedback = f"Correct! {selected_answer} is right. Reward: {reward} points"
+                            quiz_phase = "result"
+                        else:
+                            deduction = min(score, reward)
+                            score = max(0, score - reward)
+                            correct_answer = quiz_question["correct_answer"]
+                            if deduction:
+                                quiz_feedback = f"Incorrect. The correct answer was {correct_answer}. Deducted {deduction} points"
+                            else:
+                                quiz_feedback = f"Incorrect. The correct answer was {correct_answer}. Score stays at 0"
+                            quiz_phase = "retry_result"
+                    quiz_selected_option = row * 2 + column
+                elif quiz_phase == "error" and event.key in (pygame.K_r, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    with question_cache_lock:
+                        question_generation_errors.pop(quiz_difficulty, None)
+                    quiz_phase = "loading"
+                    queue_question_generation(quiz_difficulty)
+                elif quiz_phase == "retry_result" and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    quiz_phase = "difficulty"
+                    quiz_difficulty = ""
+                    quiz_question = None
+                    quiz_selected_option = 0
+                    quiz_feedback = ""
                 elif quiz_phase == "result" and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                     close_quiz()
             # Number keys are direct level selectors. Each branch sets up the
@@ -1910,19 +2053,30 @@ def main():
             reveal_end = hold_end + LEVEL_TRANSITION_REVEAL_DURATION
             screen_width, screen_height = screen.get_size()
             if transition_elapsed < cover_end:
-                black_height = int(screen_height * transition_elapsed / cover_end)
-                pygame.draw.rect(screen, (0, 0, 0), (0, screen_height - black_height, screen_width, black_height))
+                progress = max(0.0, min(1.0, transition_elapsed / cover_end))
+                eased_progress = progress * progress * (3 - 2 * progress)
+                fade = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+                fade.fill((0, 0, 0, int(255 * eased_progress)))
+                screen.blit(fade, (0, 0))
             elif transition_elapsed < hold_end:
                 screen.fill((0, 0, 0))
+                hold_progress = (transition_elapsed - cover_end) / LEVEL_TRANSITION_HOLD_DURATION
+                title_progress = min(1.0, hold_progress * 5, (1.0 - hold_progress) * 5)
+                title_alpha = int(255 * title_progress * title_progress * (3 - 2 * title_progress))
                 title_surface = transition_font.render(level_transition_title, True, (255, 211, 126))
+                title_surface.set_alpha(title_alpha)
                 title_rect = title_surface.get_rect(center=(screen_width // 2, screen_height // 2))
                 shadow_surface = transition_font.render(level_transition_title, True, (77, 51, 35))
+                shadow_surface.set_alpha(title_alpha)
                 screen.blit(shadow_surface, title_rect.move(2, 3))
                 screen.blit(title_surface, title_rect)
             elif transition_elapsed < reveal_end:
                 reveal_elapsed = transition_elapsed - hold_end
-                black_height = int(screen_height * (1 - reveal_elapsed / LEVEL_TRANSITION_REVEAL_DURATION))
-                pygame.draw.rect(screen, (0, 0, 0), (0, 0, screen_width, black_height))
+                progress = max(0.0, min(1.0, reveal_elapsed / LEVEL_TRANSITION_REVEAL_DURATION))
+                eased_progress = progress * progress * (3 - 2 * progress)
+                fade = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+                fade.fill((0, 0, 0, int(255 * (1.0 - eased_progress))))
+                screen.blit(fade, (0, 0))
             else:
                 level_transition_started_at = None
                 if pending_quiz_reason is not None:
@@ -1945,7 +2099,36 @@ def main():
             overlay.fill((5, 5, 7, 205))
             screen.blit(overlay, (0, 0))
             panel_width = min(680, screen_width - 48)
-            panel_height = 310
+            panel_height = min(470, screen_height - 32)
+            if quiz_phase == "question" and quiz_question:
+                estimate_card_width = (panel_width - 56 - 14) // 2
+                estimate_question_font = pygame.font.Font(None, 30)
+                estimate_option_font = pygame.font.Font(None, 28)
+                estimate_question_lines = wrap_text_lines(
+                    quiz_question["question"], estimate_question_font, panel_width - 72
+                )
+                estimate_option_lines = [
+                    wrap_text_lines(
+                        f"{letter}. {quiz_question['options'][letter]}",
+                        estimate_option_font,
+                        estimate_card_width - 22,
+                    )
+                    for letter in "ABCD"
+                ]
+                estimate_question_height = len(estimate_question_lines) * estimate_question_font.get_linesize()
+                estimate_row_heights = [
+                    max(len(estimate_option_lines[index]) for index in row_indices)
+                    * estimate_option_font.get_linesize()
+                    + 22
+                    for row_indices in ((0, 1), (2, 3))
+                ]
+                estimated_content_height = (
+                    estimate_question_height + 15 + sum(estimate_row_heights) + 12
+                )
+                panel_height = min(
+                    screen_height - 32,
+                    max(360, 108 + estimated_content_height + 54),
+                )
             panel = pygame.Rect(
                 (screen_width - panel_width) // 2,
                 (screen_height - panel_height) // 2,
@@ -1958,35 +2141,197 @@ def main():
             screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.top + 45)))
 
             if quiz_phase == "difficulty":
-                lines = (
-                    "What difficulty question would you like?",
-                    "1 - Easy       2 - Medium       3 - Hard",
+                difficulty_title = quiz_body_font.render("Choose a question difficulty", True, (225, 210, 188))
+                screen.blit(
+                    difficulty_title,
+                    difficulty_title.get_rect(center=(panel.centerx, panel.top + 91)),
                 )
-            elif quiz_phase == "question":
-                lines = (
-                    f"Difficulty: {quiz_difficulty}",
-                    "No questions yet",
-                    "Press ENTER to continue",
+                difficulty_options = (
+                    ("EASY", "Safety basics  ·  +10 points"),
+                    ("MEDIUM", "Everyday situations  ·  +25 points"),
+                    ("HARD", "Beginner challenge  ·  +50 points"),
                 )
-            elif quiz_phase == "answer":
-                lines = (
-                    "No questions yet",
-                    "Did you get the question correct?",
-                    "Y - Yes       N - No",
+                difficulty_fills = ((78, 56, 45), (69, 53, 46), (82, 58, 43))
+                difficulty_width = panel.width - 110
+                difficulty_height = 70
+                difficulty_x = panel.left + 55
+                difficulty_start_y = panel.top + 132
+                difficulty_gap = 13
+                for index, (label, description) in enumerate(difficulty_options):
+                    button = pygame.Rect(
+                        difficulty_x,
+                        difficulty_start_y + index * (difficulty_height + difficulty_gap),
+                        difficulty_width,
+                        difficulty_height,
+                    )
+                    pygame.draw.rect(screen, (17, 14, 14), button.move(0, 5), border_radius=5)
+                    pygame.draw.rect(screen, difficulty_fills[index], button, border_radius=5)
+                    pygame.draw.rect(screen, (112, 79, 59), button, 2, border_radius=5)
+                    pygame.draw.line(
+                        screen,
+                        (143, 104, 75),
+                        (button.left + 8, button.top + 4),
+                        (button.right - 8, button.top + 4),
+                        2,
+                    )
+                    if index == quiz_selected_option:
+                        pygame.draw.rect(screen, (239, 188, 111), button, 3, border_radius=5)
+                        pygame.draw.rect(screen, (255, 226, 179), button.inflate(-8, -8), 1, border_radius=4)
+                    label_surface = quiz_body_font.render(label, True, (255, 218, 163))
+                    detail_surface = pygame.font.Font(None, 24).render(description, True, (218, 203, 185))
+                    screen.blit(label_surface, label_surface.get_rect(center=(button.centerx, button.centery - 9)))
+                    screen.blit(detail_surface, detail_surface.get_rect(center=(button.centerx, button.centery + 20)))
+                choice_hint = pygame.font.Font(None, 25).render("W A S D choose  ·  E confirm", True, (205, 190, 171))
+                screen.blit(choice_hint, choice_hint.get_rect(center=(panel.centerx, panel.bottom - 23)))
+                lines = []
+            elif quiz_phase == "question" and quiz_question:
+                difficulty_label = quiz_body_font.render(
+                    f"{quiz_difficulty} question", True, (210, 198, 177)
                 )
-            else:
-                lines = (
-                    quiz_feedback,
-                    f"Current score: {score}",
-                    "Press ENTER to continue",
+                screen.blit(
+                    difficulty_label,
+                    difficulty_label.get_rect(center=(panel.centerx, panel.top + 82)),
                 )
 
-            line_y = panel.top + 112
+                gap = 14
+                card_width = (panel_width - 56 - gap) // 2
+                card_x = (panel.left + 20, panel.left + 20 + card_width + gap)
+                text_top = panel.top + 108
+                content_bottom = panel.bottom - 54
+                available_content_height = content_bottom - text_top
+
+                # Find the largest readable font sizes that let the entire
+                # prompt and all four options fit inside the modal.
+                layout = None
+                for question_size in range(30, 13, -1):
+                    question_font = pygame.font.Font(None, question_size)
+                    option_font = pygame.font.Font(None, max(14, question_size - 2))
+                    question_lines = wrap_text_lines(
+                        quiz_question["question"], question_font, panel_width - 72
+                    )
+                    option_lines_by_index = [
+                        wrap_text_lines(
+                            f"{letter}. {quiz_question['options'][letter]}",
+                            option_font,
+                            card_width - 22,
+                        )
+                        for letter in "ABCD"
+                    ]
+                    question_height = len(question_lines) * question_font.get_linesize()
+                    row_heights = [
+                        max(len(option_lines_by_index[index]) for index in row_indices)
+                        * option_font.get_linesize()
+                        + 22
+                        for row_indices in ((0, 1), (2, 3))
+                    ]
+                    total_content_height = question_height + 15 + sum(row_heights) + 12
+                    layout = (
+                        question_font,
+                        option_font,
+                        question_lines,
+                        option_lines_by_index,
+                        row_heights,
+                        question_height,
+                    )
+                    if total_content_height <= available_content_height:
+                        break
+
+                question_font, option_font, question_lines, option_lines_by_index, row_heights, question_height = layout
+                for index, line in enumerate(question_lines):
+                    rendered_question = question_font.render(line, True, (248, 244, 236))
+                    screen.blit(
+                        rendered_question,
+                        rendered_question.get_rect(center=(panel.centerx, text_top + index * question_font.get_linesize() + question_font.get_linesize() // 2)),
+                    )
+
+                first_row_y = text_top + question_height + 15
+                card_y = (first_row_y, first_row_y + row_heights[0] + 12)
+                card_heights = (row_heights[0], row_heights[1])
+                card_colors = ((78, 56, 45), (69, 53, 46), (82, 58, 43), (72, 51, 43))
+                for index, letter in enumerate("ABCD"):
+                    row, column = divmod(index, 2)
+                    card = pygame.Rect(card_x[column], card_y[row], card_width, card_heights[row])
+                    pygame.draw.rect(screen, (17, 14, 14), card.move(0, 5), border_radius=5)
+                    pygame.draw.rect(screen, card_colors[index], card, border_radius=5)
+                    pygame.draw.rect(screen, (112, 79, 59), card, 2, border_radius=5)
+                    pygame.draw.line(
+                        screen,
+                        (143, 104, 75),
+                        (card.left + 6, card.top + 4),
+                        (card.right - 6, card.top + 4),
+                        2,
+                    )
+                    pygame.draw.line(
+                        screen,
+                        (42, 32, 29),
+                        (card.left + 6, card.bottom - 4),
+                        (card.right - 6, card.bottom - 4),
+                        2,
+                    )
+                    if index == quiz_selected_option:
+                        pygame.draw.rect(screen, (239, 188, 111), card, 3, border_radius=5)
+                        pygame.draw.rect(screen, (255, 226, 179), card.inflate(-8, -8), 1, border_radius=4)
+
+                    option_lines = option_lines_by_index[index]
+                    option_text_height = len(option_lines) * option_font.get_linesize()
+                    option_text_top = card.centery - option_text_height // 2
+                    for line_index, line in enumerate(option_lines):
+                        rendered_option = option_font.render(line, True, (255, 255, 255))
+                        screen.blit(
+                            rendered_option,
+                            rendered_option.get_rect(center=(card.centerx, option_text_top + line_index * option_font.get_linesize() + option_font.get_linesize() // 2)),
+                        )
+
+                answer_hint = quiz_body_font.render("W A S D move  ·  E select", True, (219, 201, 178))
+                screen.blit(answer_hint, answer_hint.get_rect(center=(panel.centerx, panel.bottom - 26)))
+                lines = []
+            elif quiz_phase == "loading":
+                lines = [f"Generating a {quiz_difficulty.lower()} question with Ollama...", "Please wait"]
+            elif quiz_phase == "error":
+                lines = [
+                    "Could not generate a question.",
+                    question_generation_errors.get(quiz_difficulty, "Ollama did not return a question."),
+                    "Press R or ENTER to retry",
+                ]
+            elif quiz_phase in ("result", "retry_result"):
+                lines = [quiz_feedback, f"Current score: {score}"]
+                if quiz_question and quiz_question.get("explanation"):
+                    lines.append(f"Why: {quiz_question['explanation']}")
+                if quiz_phase == "retry_result":
+                    lines.append("Press ENTER to choose a difficulty and try again")
+                else:
+                    lines.append("Press ENTER to continue")
+            else:
+                lines = []
+
+            # Wrap status and result text to fit the modal instead of clipping long
+            # questions or explanations at the edges of the game window.
+            wrapped_lines = []
+            max_text_width = panel_width - 56
             for line in lines:
+                words = str(line).split()
+                current_line = ""
+                for word in words:
+                    candidate = f"{current_line} {word}".strip()
+                    if current_line and quiz_body_font.size(candidate)[0] > max_text_width:
+                        wrapped_lines.append(current_line)
+                        current_line = word
+                    else:
+                        current_line = candidate
+                if current_line:
+                    wrapped_lines.append(current_line)
+
+            line_y = panel.top + 96
+            line_spacing = 31
+            available_bottom = panel.bottom - 24
+            for line in wrapped_lines:
+                if line_y + line_spacing > available_bottom:
+                    break
                 rendered_line = quiz_body_font.render(line, True, (238, 232, 219))
                 screen.blit(rendered_line, rendered_line.get_rect(center=(panel.centerx, line_y)))
-                line_y += 45
+                line_y += line_spacing
 
+        pygame.transform.scale(screen, display_surface.get_size(), display_surface)
         pygame.display.flip()
         clock.tick(60)
 
