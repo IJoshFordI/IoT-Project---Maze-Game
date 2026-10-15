@@ -10,6 +10,7 @@ import math
 import queue
 import random
 import threading
+from pathlib import Path
 
 import pygame
 
@@ -127,7 +128,7 @@ MAZE = ["".join(row) for row in maze_tiles]
 # Size the window to the complete maze so there is no surrounding black border.
 WINDOW_WIDTH = maze_width * CELL_SIZE
 WINDOW_HEIGHT = len(MAZE) * CELL_SIZE
-WINDOW_SCALE = 1.56
+WINDOW_SCALE = 1.2
 
 
 # Each later map uses the same row/column tile coordinates as the main map.
@@ -1152,13 +1153,11 @@ def make_level_three_floor():
     return floor
 
 
-def make_warm_cave_floor(width=WINDOW_WIDTH, height=WINDOW_HEIGHT, original=False):
+def make_warm_cave_floor(width=WINDOW_WIDTH, height=WINDOW_HEIGHT, original=False, stone_width=43, stone_height=35):
     """Create the original rust cave floor or Level 5's deep violet stone floor."""
     floor = pygame.Surface((width, height))
     floor.fill(ORIGINAL_CAVE_FLOOR if original else WARM_CAVE_FLOOR)
     rng = random.Random(58)
-    stone_width = 43
-    stone_height = 35
     rows = (height + stone_height - 1) // stone_height
     columns = (width + stone_width - 1) // stone_width + 1
 
@@ -1212,6 +1211,169 @@ def make_warm_cave_floor(width=WINDOW_WIDTH, height=WINDOW_HEIGHT, original=Fals
                 pygame.draw.line(floor, chip_color, (chip_x, chip_y), (chip_x + chip_size, chip_y + 1), 1)
 
     return floor
+
+
+def make_cave_wall_backdrop(width, height, stone_scale):
+    """Create a dark rocky cave wall with warm torches for the outer margins."""
+    backdrop = pygame.Surface((width, height))
+    backdrop.fill((8, 9, 10))
+    rng = random.Random(91)
+    stone_width = max(1, round(43 * stone_scale))
+    stone_height = max(1, round(35 * stone_scale))
+    rows = (height + stone_height - 1) // stone_height
+    columns = (width + stone_width - 1) // stone_width + 1
+    gap = max(1, round(3 * stone_scale))
+
+    for row in range(rows):
+        for column in range(columns):
+            x = column * stone_width - (stone_width // 2 if row % 2 else 0)
+            y = row * stone_height
+            inset = max(1, round(rng.randint(2, 5) * stone_scale))
+            left = x + inset
+            top = y + inset
+            right = x + stone_width - inset
+            bottom = y + stone_height - inset
+            points = [
+                (left + rng.randint(4, 9) * stone_scale, top),
+                (right - rng.randint(5, 10) * stone_scale, top + rng.randint(-1, 2) * stone_scale),
+                (right, top + rng.randint(5, 10) * stone_scale),
+                (right + rng.randint(-1, 2) * stone_scale, bottom - rng.randint(5, 10) * stone_scale),
+                (right - rng.randint(6, 11) * stone_scale, bottom),
+                (left + rng.randint(6, 11) * stone_scale, bottom),
+                (left, bottom - rng.randint(5, 10) * stone_scale),
+                (left, top + rng.randint(6, 11) * stone_scale),
+            ]
+            points = [(round(px), round(py)) for px, py in points]
+            shade = rng.randint(25, 43)
+            pygame.draw.polygon(backdrop, (shade + 2, shade + 1, shade), points)
+            pygame.draw.lines(backdrop, (5, 6, 7), True, points, gap)
+            edge = min(255, shade + rng.randint(9, 16))
+            pygame.draw.line(backdrop, (edge, edge - 1, edge - 2), points[0], points[1], max(1, round(stone_scale)))
+            pygame.draw.line(backdrop, (max(8, shade - 12), max(8, shade - 12), max(9, shade - 10)), points[3], points[4], gap)
+            facet = (points[0], points[1], (round((points[1][0] + points[2][0]) / 2), round((points[1][1] + points[2][1]) / 2)))
+            pygame.draw.polygon(backdrop, (shade + 6, shade + 6, shade + 7), facet)
+            if rng.random() < 0.58:
+                crack_x = x + round(stone_width * rng.uniform(0.35, 0.7))
+                crack_y = y + round(stone_height * rng.uniform(0.3, 0.65))
+                crack = (
+                    (crack_x, crack_y),
+                    (crack_x + round(rng.randint(-5, 5) * stone_scale), crack_y + round(rng.randint(3, 7) * stone_scale)),
+                    (crack_x + round(rng.randint(-7, 7) * stone_scale), crack_y + round(rng.randint(7, 12) * stone_scale)),
+                )
+                pygame.draw.lines(backdrop, (11, 12, 13), False, crack, max(1, round(2 * stone_scale)))
+                pygame.draw.line(backdrop, (shade + 7, shade + 6, shade + 5), crack[0], crack[1], max(1, round(stone_scale)))
+            for _ in range(rng.randint(2, 5)):
+                fleck_x = rng.randint(left + 2, max(left + 2, right - 2))
+                fleck_y = rng.randint(top + 2, max(top + 2, bottom - 2))
+                fleck = rng.choice(((shade + 8, shade + 8, shade + 9), (shade - 7, shade - 6, shade - 5), (17, 18, 19)))
+                pygame.draw.circle(backdrop, fleck, (fleck_x, fleck_y), max(1, round(stone_scale)))
+
+    # Add soft pools of torchlight behind small torches in the side margins.
+    side_width = (width - round(WINDOW_WIDTH * stone_scale)) // 2
+    if side_width > round(45 * stone_scale):
+        glow = pygame.Surface((width, height), pygame.SRCALPHA)
+        torch_sprite = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+        draw_torch(torch_sprite, 0, 0)
+        torch_size = max(1, round(CELL_SIZE * 2 * stone_scale))
+        torch_sprite = pygame.transform.scale(torch_sprite, (torch_size, torch_size))
+        for side_x in (side_width // 2, width - side_width // 2):
+            for y in (round(height * 0.25), round(height * 0.76)):
+                glow_radius = round(85 * stone_scale)
+                for radius, alpha in ((glow_radius, 12), (round(glow_radius * 0.65), 17), (round(glow_radius * 0.35), 22)):
+                    pygame.draw.circle(glow, (235, 112, 40, alpha), (side_x, y), radius)
+        backdrop.blit(glow, (0, 0))
+        for side_x in (side_width // 2, width - side_width // 2):
+            for y in (round(height * 0.25), round(height * 0.76)):
+                backdrop.blit(torch_sprite, torch_sprite.get_rect(center=(side_x, y)))
+
+        # Jagged boulders at the far edges make the side panels feel like a
+        # passage through a cave, instead of a flat tiled wall.
+        rock_rng = random.Random(17)
+        for edge_x, direction in ((0, 1), (width, -1)):
+            for row in range(9):
+                rock_y = row * height // 8 - round(25 * stone_scale)
+                rock_w = round(52 * stone_scale * rock_rng.uniform(0.8, 1.35))
+                rock_h = round(72 * stone_scale * rock_rng.uniform(0.75, 1.45))
+                points = [
+                    (edge_x, rock_y),
+                    (edge_x + direction * round(rock_w * 0.52), rock_y + round(rock_h * 0.08)),
+                    (edge_x + direction * rock_w, rock_y + round(rock_h * 0.34)),
+                    (edge_x + direction * round(rock_w * 0.86), rock_y + round(rock_h * 0.78)),
+                    (edge_x + direction * round(rock_w * 0.45), rock_y + rock_h),
+                    (edge_x, rock_y + round(rock_h * 0.83)),
+                ]
+                shade = rock_rng.randint(25, 39)
+                pygame.draw.polygon(backdrop, (shade + 1, shade + 2, shade + 4), points)
+                pygame.draw.lines(backdrop, (8, 9, 11), True, points, max(2, round(3 * stone_scale)))
+                pygame.draw.line(backdrop, (shade + 12, shade + 13, shade + 15), points[0], points[1], max(1, round(stone_scale)))
+
+        def draw_barrel(center_x, center_y, size):
+            barrel_w, barrel_h = round(30 * size), round(39 * size)
+            bounds = pygame.Rect(0, 0, barrel_w, barrel_h)
+            bounds.center = (center_x, center_y)
+            pygame.draw.ellipse(backdrop, (37, 23, 14), bounds)
+            pygame.draw.rect(backdrop, (81, 47, 25), bounds.inflate(-round(4 * size), -round(4 * size)))
+            pygame.draw.ellipse(backdrop, (119, 76, 39), (bounds.x + 2, bounds.y, bounds.w - 4, round(10 * size)))
+            for plank_x in (bounds.x + round(9 * size), bounds.x + round(19 * size)):
+                pygame.draw.line(backdrop, (49, 30, 18), (plank_x, bounds.y + round(6 * size)), (plank_x, bounds.bottom - round(5 * size)), max(1, round(size)))
+            for band_y in (bounds.y + round(9 * size), bounds.bottom - round(10 * size)):
+                pygame.draw.line(backdrop, (137, 91, 48), (bounds.x + 2, band_y), (bounds.right - 2, band_y), max(2, round(3 * size)))
+                pygame.draw.line(backdrop, (48, 48, 45), (bounds.x + 3, band_y + round(2 * size)), (bounds.right - 3, band_y + round(2 * size)), max(1, round(size)))
+            pygame.draw.line(backdrop, (177, 119, 61), (bounds.x + round(5 * size), bounds.y + round(13 * size)), (bounds.x + round(5 * size), bounds.bottom - round(13 * size)), max(1, round(size)))
+            pygame.draw.ellipse(backdrop, (44, 27, 16), (bounds.x + round(5 * size), bounds.y + round(2 * size), bounds.w - round(10 * size), round(6 * size)))
+
+        def draw_crate(center_x, center_y, size):
+            box = pygame.Rect(0, 0, round(39 * size), round(35 * size))
+            box.center = (center_x, center_y)
+            pygame.draw.rect(backdrop, (75, 43, 21), box)
+            pygame.draw.rect(backdrop, (139, 84, 37), box, max(2, round(3 * size)))
+            pygame.draw.line(backdrop, (166, 105, 48), box.topleft, box.bottomright, max(2, round(4 * size)))
+            pygame.draw.line(backdrop, (166, 105, 48), box.topright, box.bottomleft, max(2, round(4 * size)))
+            pygame.draw.rect(backdrop, (57, 34, 20), box.inflate(-round(9 * size), -round(9 * size)), max(1, round(size)))
+            nail = (206, 154, 83)
+            for nail_point in (box.topleft, box.topright, box.bottomleft, box.bottomright):
+                pygame.draw.circle(backdrop, nail, nail_point, max(1, round(size)))
+
+        def draw_skull(center_x, center_y, size):
+            radius = max(2, round(7 * size))
+            bone = (173, 157, 125)
+            pygame.draw.circle(backdrop, bone, (center_x, center_y), radius)
+            pygame.draw.ellipse(backdrop, bone, (center_x - radius, center_y + round(3 * size), radius * 2, round(8 * size)))
+            eye_radius = max(1, round(2 * size))
+            pygame.draw.circle(backdrop, (25, 21, 18), (center_x - round(3 * size), center_y), eye_radius)
+            pygame.draw.circle(backdrop, (25, 21, 18), (center_x + round(3 * size), center_y), eye_radius)
+            pygame.draw.line(backdrop, (70, 58, 43), (center_x - round(3 * size), center_y + round(6 * size)), (center_x + round(3 * size), center_y + round(6 * size)), max(1, round(size)))
+            for tooth_x in (center_x - round(2 * size), center_x, center_x + round(2 * size)):
+                pygame.draw.line(backdrop, (220, 204, 169), (tooth_x, center_y + round(6 * size)), (tooth_x, center_y + round(8 * size)), max(1, round(size)))
+
+        def draw_web(anchor_x, anchor_y, size, flip_x=1, flip_y=1):
+            radius = round(34 * size)
+            origin = (anchor_x, anchor_y)
+            for spoke in range(6):
+                angle = spoke / 5
+                end = (anchor_x + flip_x * round(radius * angle), anchor_y + flip_y * round(radius * (1 - angle)))
+                pygame.draw.line(backdrop, (72, 67, 61), origin, end, max(1, round(size)))
+            for ring in (0.35, 0.62, 0.88):
+                points = []
+                for spoke in range(6):
+                    angle = spoke / 5
+                    points.append((
+                        anchor_x + flip_x * round(radius * angle * ring),
+                        anchor_y + flip_y * round(radius * (1 - angle) * ring),
+                    ))
+                pygame.draw.lines(backdrop, (68, 63, 58), False, points, max(1, round(size)))
+
+        prop_scale = max(0.7, stone_scale)
+        for side_x, inward in ((side_width // 2, 1), (width - side_width // 2, -1)):
+            draw_barrel(side_x + inward * round(side_width * 0.27), round(height * 0.13), prop_scale)
+            draw_skull(side_x - inward * round(side_width * 0.25), round(height * 0.32), prop_scale)
+            draw_crate(side_x - inward * round(side_width * 0.24), round(height * 0.48), prop_scale)
+            draw_barrel(side_x + inward * round(side_width * 0.29), round(height * 0.83), prop_scale)
+            draw_skull(side_x - inward * round(side_width * 0.25), round(height * 0.91), prop_scale)
+        draw_web(0, 0, prop_scale, 1, 1)
+        draw_web(width, height, prop_scale, -1, -1)
+
+    return backdrop
 
 
 def draw_character(screen, x, y, animation_time=0, walking=False, walk_frame=0):
@@ -1283,10 +1445,21 @@ def wrap_text_lines(text, font, max_width):
 def main():
     pygame.init()
     pygame.key.set_repeat(180, PLAYER_KEY_REPEAT_INTERVAL_MS)
-    display_surface = pygame.display.set_mode((
-        int(WINDOW_WIDTH * WINDOW_SCALE),
-        int(WINDOW_HEIGHT * WINDOW_SCALE),
-    ))
+    display_surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    display_width, display_height = display_surface.get_size()
+    fit_scale = min(display_width / WINDOW_WIDTH, display_height / WINDOW_HEIGHT)
+    fit_size = (int(WINDOW_WIDTH * fit_scale), int(WINDOW_HEIGHT * fit_scale))
+    project_dir = Path(__file__).resolve().parent
+    left_cave_art = pygame.image.load(str(project_dir / "assets" / "maze_cave_left.png")).convert()
+    right_cave_art = pygame.image.load(str(project_dir / "assets" / "maze_cave_right.png")).convert()
+    backdrop = pygame.Surface(display_surface.get_size())
+    backdrop.fill((8, 9, 10))
+    side_width = (display_width - fit_size[0]) // 2
+    if side_width > 0:
+        left_panel = pygame.transform.smoothscale(left_cave_art, (side_width + 1, display_height))
+        right_panel = pygame.transform.smoothscale(right_cave_art, (side_width + 1, display_height))
+        backdrop.blit(left_panel, (0, 0))
+        backdrop.blit(right_panel, (display_width - side_width - 1, 0))
     screen = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
     # Build static floor textures once; their stone patterns do not change
     # during play, so they do not need to be recreated every frame.
@@ -2331,7 +2504,9 @@ def main():
                 screen.blit(rendered_line, rendered_line.get_rect(center=(panel.centerx, line_y)))
                 line_y += line_spacing
 
-        pygame.transform.scale(screen, display_surface.get_size(), display_surface)
+        display_surface.blit(backdrop, (0, 0))
+        scaled_screen = pygame.transform.scale(screen, fit_size)
+        display_surface.blit(scaled_screen, scaled_screen.get_rect(center=display_surface.get_rect().center))
         pygame.display.flip()
         clock.tick(60)
 
