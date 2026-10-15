@@ -66,19 +66,11 @@ def generate_question(difficulty="Easy"):
     # launch and display a helpful error if the optional package is missing.
     import requests
 
-    prompt = f"""
-Generate exactly one beginner-friendly {difficulty.lower()} difficulty cybersecurity question about IoT devices.
-Difficulty guidance: {DIFFICULTY_GUIDANCE[difficulty]}
-Keep the question short, use familiar words, and avoid jargon, obscure facts, advanced networking, cryptography, or multi-step analysis.
-Make the wrong answers clearly understandable and not trick answers. Keep the difficulty differences gentle; all questions should be accessible to a beginner.
-The question should clearly fit the selected difficulty while staying easy overall.
-Return only valid JSON with these fields:
-- question: a concise question or scenario
-- options: an object with exactly four string values labelled A, B, C, and D
-- correct_answer: the single correct option letter (A, B, C, or D)
-- explanation: a short explanation of why the answer is correct
-Only one option should be correct. Keep all options plausible and unambiguous.
-"""
+    prompt = f"""Write one short, beginner-friendly IoT cybersecurity multiple-choice question.
+Difficulty: {difficulty}. {DIFFICULTY_GUIDANCE[difficulty]}
+Use familiar words, four concise and plausible options, and exactly one correct answer.
+Return only a JSON object with: question, options (A, B, C, D), correct_answer (letter), and a one-sentence explanation.
+Avoid jargon, obscure facts, trick answers, and multi-step analysis."""
 
     response = requests.post(
         "http://localhost:11434/api/generate",
@@ -87,6 +79,8 @@ Only one option should be correct. Keep all options plausible and unambiguous.
             "prompt": prompt,
             "stream": False,
             "format": "json",
+            "keep_alive": "10m",
+            "options": {"num_predict": 220},
         },
         timeout=120,
     )

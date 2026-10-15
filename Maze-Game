@@ -1509,7 +1509,7 @@ def main():
     quiz_question = None
     quiz_selected_option = 0
     question_cache = {difficulty: [] for difficulty in ("Easy", "Medium", "Hard")}
-    question_cache_target = 2
+    question_cache_target = 4
     question_cache_lock = threading.Lock()
     question_generation_queue = queue.Queue()
     question_generation_in_progress = set()
