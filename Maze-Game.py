@@ -18,7 +18,7 @@ from cyber_questions import generate_question
 
 
 CELL_SIZE = 25
-PLAYER_KEY_REPEAT_INTERVAL_MS = 130
+PLAYER_KEY_REPEAT_INTERVAL_MS = 100
 WALL_INSET = 0
 
 # Colors are grouped by the cave theme that uses them. RGB values can be tuned
@@ -35,12 +35,12 @@ SHOE_DARK_BLUE = (0, 49, 200)
 CHARACTER_BLACK = (8, 8, 8)
 EYE_WHITE = (255, 255, 255)
 DOT = (255, 230, 170)
-BUTTON_OUTLINE = (18, 31, 35)
-BUTTON_RIM = (45, 66, 69)
-BUTTON_LIGHT = (68, 91, 93)
-BUTTON_DARK = (35, 53, 57)
-BUTTON_SHADOW = (21, 34, 38)
-BUTTON_HIGHLIGHT = (91, 119, 119)
+BUTTON_OUTLINE = (32, 31, 29)
+BUTTON_RIM = (69, 67, 60)
+BUTTON_LIGHT = (83, 79, 68)
+BUTTON_DARK = (49, 47, 42)
+BUTTON_SHADOW = (25, 24, 23)
+BUTTON_HIGHLIGHT = (97, 90, 73)
 
 LEVEL_THREE_FLOOR = (22, 30, 33)
 LEVEL_THREE_FLOOR_FLECKS = ((35, 47, 49), (40, 53, 54), (28, 38, 41))
@@ -123,6 +123,10 @@ START_COLUMN = 15
 EXIT_ROW = center_row
 EXIT_COLUMN = center_column
 maze_tiles[EXIT_ROW][EXIT_COLUMN] = "G"
+# Level 1 route adjustment: open the tile marked white and close the tile
+# marked red in the player's map reference.
+maze_tiles[17][20] = " "
+maze_tiles[15][25] = "#"
 MAZE = ["".join(row) for row in maze_tiles]
 
 # Size the window to the complete maze so there is no surrounding black border.
@@ -166,6 +170,12 @@ LEVEL_TWO_MAZE = [
     "###############################",
 ]
 
+# Open the Level 2 wall marked in the player's screenshot.
+_level_two_tiles = [list(row) for row in LEVEL_TWO_MAZE]
+_level_two_tiles[17][5] = " "
+_level_two_tiles[15][5] = "#"
+LEVEL_TWO_MAZE = ["".join(row) for row in _level_two_tiles]
+
 
 def generate_new_maze():
     """Return a copy of the manually editable second-level map."""
@@ -177,9 +187,9 @@ LEVEL_THREE_START_ROW = START_ROW
 LEVEL_THREE_START_COLUMN = START_COLUMN
 GATE_TILE = (17, 15)
 GATE_SLIDE_DURATION = 450
-LEVEL_TRANSITION_COVER_DURATION = 520
-LEVEL_TRANSITION_HOLD_DURATION = 720
-LEVEL_TRANSITION_REVEAL_DURATION = 560
+LEVEL_TRANSITION_COVER_DURATION = 100
+LEVEL_TRANSITION_HOLD_DURATION = 300
+LEVEL_TRANSITION_REVEAL_DURATION = 100
 LEVEL_THREE_MAZE = [
     "###############################",
     "#           #                 #",
@@ -213,6 +223,12 @@ LEVEL_THREE_MAZE = [
     "#    #                        #",
     "###############################",
 ]
+_level_three_tiles = [list(row) for row in LEVEL_THREE_MAZE]
+for _row, _column in ((7, 5), (20, 6), (21, 22), (23, 12)):
+    _level_three_tiles[_row][_column] = " "
+for _row, _column in ((10, 2), (24, 11), (25, 24), (24, 7), (17, 8)):
+    _level_three_tiles[_row][_column] = "#"
+LEVEL_THREE_MAZE = ["".join(row) for row in _level_three_tiles]
 
 # Level 4 maze: edit one quoted string per row (31 characters each).
 # # is a wall, spaces are paths, and G is behind the central 3x3 goal room.
@@ -249,6 +265,20 @@ LEVEL_FOUR_MAZE = [
     "#     #       #   #     #     #",
     "###############################",
 ]
+_level_four_tiles = [list(row) for row in LEVEL_FOUR_MAZE]
+for _row, _column in ((3, 20), (10, 23), (12, 23), (16, 19)):
+    _level_four_tiles[_row][_column] = " "
+for _row, _column in ((4, 9), (12, 3)):
+    _level_four_tiles[_row][_column] = "#"
+for _row, _column in ((2, 27), (10, 23), (12, 23)):
+    _level_four_tiles[_row][_column] = "#"
+for _row, _column in ((12, 29), (13, 26)):
+    _level_four_tiles[_row][_column] = " "
+_level_four_tiles[2][25] = " "
+for _row, _column in ((15, 28), (13, 26)):
+    _level_four_tiles[_row][_column] = "#"
+_level_four_tiles[13][26] = " "
+LEVEL_FOUR_MAZE = ["".join(row) for row in _level_four_tiles]
 
 # Level 5 maze: edit one quoted string per row (31 characters each).
 # # is a wall, spaces are paths, and G is the goal inside the center room.
@@ -385,7 +415,9 @@ LEVEL_FIVE_BOULDER_PATH = (
     (3, 27), (3, 29), (5, 29), (6, 29),
 )
 LEVEL_FIVE_BOULDER_RUBBLE_TILE = (5, 29)
-LEVEL_FIVE_BOULDER_SPEED = 350
+# This trap reaches the East Cave entrance after 18 path tiles. At 400 px/s it
+# takes 1.125 s, leaving time for the player to reach the entrance from the plate.
+LEVEL_FIVE_BOULDER_SPEED = 400
 LEVEL_FIVE_BOULDER_IMPACT_DURATION = 260
 LEVEL_FIVE_UPPER_LEFT_PRESSURE_PLATE_TILE = (1, 1)
 LEVEL_FIVE_UPPER_LEFT_BOULDER_SPAWN_TILE = (0, 9)
@@ -432,15 +464,17 @@ LEVEL_THREE_BUTTONS = [
 LEVEL_FOUR_PILLARS = ((14, 14), (14, 16), (16, 14), (16, 16))
 LEVEL_FOUR_GATE_TILE = (0, 15)
 LEVEL_FOUR_TORCHES = ((1, 30, "surface"), (18, 21, "surface"), (27, 0, "surface"), (28, 15, "surface"))
-LEVEL_FOUR_PRESSURE_PLATE_TILE = (25, 3)
-LEVEL_FOUR_BOULDER_SPAWN_TILE = (30, 3)
+LEVEL_FOUR_PRESSURE_PLATE_TILE = (13, 29)
+LEVEL_FOUR_BOULDER_SPAWN_TILE = (25, 30)
 LEVEL_FOUR_BOULDER_PATH = (
     LEVEL_FOUR_BOULDER_SPAWN_TILE,
-    (27, 3), LEVEL_FOUR_PRESSURE_PLATE_TILE, (25, 1),
-    (13, 1), (13, 3), (11, 3), (11, 1), (7, 1),
+    (25, 29), LEVEL_FOUR_PRESSURE_PLATE_TILE, (1, 29),
+    (1, 21), (3, 21), (3, 23), (9, 23),
 )
-LEVEL_FOUR_BOULDER_RUBBLE_TILE = (7, 1)
-LEVEL_FOUR_BOULDER_SPEED = CELL_SIZE * 1000 / PLAYER_KEY_REPEAT_INTERVAL_MS - 10
+LEVEL_FOUR_BOULDER_RUBBLE_TILE = (9, 23)
+# At this speed, it reaches the plate about 1.1 seconds after the trigger,
+# leaving the player time to step away while making the boulder feel close.
+LEVEL_FOUR_BOULDER_SPEED = 300
 
 
 def tiles_are_adjacent(first, second):
@@ -462,6 +496,8 @@ def draw_maze(
     carried_torch=False,
     lit_pillars=(),
     animation_time=0,
+    player_name="",
+    player_label_font=None,
     walking=False,
     level_four_gate_slide_started_at=None,
     warm_cave=False,
@@ -488,6 +524,7 @@ def draw_maze(
     arrows=(),
     arrow_pressure_plate_tile=None,
     arrow_pressure_plate_pressed=False,
+    draw_player=True,
 ):
     """Draw a rocky cave maze with a dim, mottled stone floor."""
     maze_width = max(len(row) for row in maze) * CELL_SIZE
@@ -714,40 +751,53 @@ def draw_maze(
     walk_frame = int(animation_time * 10) % 2
     idle_bob = int(animation_time * 2) % 2 if not walking else 0
     character_y = player_row * CELL_SIZE + 2 + (-2 if walking and walk_frame else -idle_bob)
-    draw_character(
-        screen,
-        offset_x + player_column * CELL_SIZE + 1,
-        offset_y + character_y,
-        animation_time=animation_time,
-        walking=walking,
-        walk_frame=walk_frame,
-    )
-    if carried_torch:
-        draw_carried_torch(
+    if draw_player:
+        draw_character(
             screen,
-            offset_x + player_column * CELL_SIZE,
-            offset_y + character_y - 2,
+            offset_x + player_column * CELL_SIZE + 1,
+            offset_y + character_y,
             animation_time=animation_time,
+            walking=walking,
+            walk_frame=walk_frame,
         )
-    if carrying_artifact == "west":
-        draw_cave_medallion(
-            screen,
-            offset_x + player_column * CELL_SIZE + 6,
-            offset_y + character_y - 4,
-            animation_time,
-        )
-    elif carrying_artifact == "north":
-        draw_north_artifact_carried(
-            screen,
-            offset_x + player_column * CELL_SIZE,
-            offset_y + character_y,
-        )
-    elif carrying_artifact == "east":
-        draw_east_artifact_carried(
-            screen,
-            offset_x + player_column * CELL_SIZE,
-            offset_y + character_y,
-        )
+        if player_name:
+            name_font = player_label_font or pygame.font.Font(None, 15)
+            name_surface = name_font.render(player_name, True, (255, 232, 190))
+            name_rect = name_surface.get_rect(
+                midbottom=(
+                    offset_x + player_column * CELL_SIZE + CELL_SIZE // 2,
+                    offset_y + character_y - 4,
+                )
+            )
+            shadow_surface = name_font.render(player_name, True, (15, 12, 10))
+            screen.blit(shadow_surface, name_rect.move(1, 1))
+            screen.blit(name_surface, name_rect)
+        if carried_torch:
+            draw_carried_torch(
+                screen,
+                offset_x + player_column * CELL_SIZE,
+                offset_y + character_y - 2,
+                animation_time=animation_time,
+            )
+        if carrying_artifact == "west":
+            draw_cave_medallion(
+                screen,
+                offset_x + player_column * CELL_SIZE + 6,
+                offset_y + character_y - 4,
+                animation_time,
+            )
+        elif carrying_artifact == "north":
+            draw_north_artifact_carried(
+                screen,
+                offset_x + player_column * CELL_SIZE,
+                offset_y + character_y,
+            )
+        elif carrying_artifact == "east":
+            draw_east_artifact_carried(
+                screen,
+                offset_x + player_column * CELL_SIZE,
+                offset_y + character_y,
+            )
     for row, column in rocks:
         draw_rounded_rock(screen, offset_x + column * CELL_SIZE, offset_y + row * CELL_SIZE)
     for artifact_name, tile in placed_artifacts:
@@ -1417,6 +1467,35 @@ def draw_character(screen, x, y, animation_time=0, walking=False, walk_frame=0):
     pygame.draw.rect(screen, SHOE_DARK_BLUE, (x + 7 * pixel, y + 9 * pixel + right_lift, 4 * pixel, pixel))
 
 
+def draw_death_animation(screen, elapsed_ms, player_position, animation_time):
+    """Animate the character jumping up, then falling off the bottom of the maze."""
+    x, base_y = map(int, player_position)
+    jump_duration = 360
+    total_duration = 1350
+
+    if elapsed_ms < jump_duration:
+        jump_progress = max(0.0, elapsed_ms / jump_duration)
+        vertical_offset = -round(48 * math.sin(jump_progress * math.pi / 2))
+        shadow_width = max(3, round(15 * (1 - jump_progress * 0.65)))
+        pygame.draw.ellipse(
+            screen, (10, 9, 8),
+            (x + 10 - shadow_width // 2, base_y + 19, shadow_width, 4),
+        )
+    else:
+        fall_progress = min(1.0, (elapsed_ms - jump_duration) / (total_duration - jump_duration))
+        # Accelerating descent gives the familiar high jump followed by a fast fall.
+        vertical_offset = -48 + round((screen.get_height() + 80) * fall_progress ** 2)
+
+    draw_character(
+        screen,
+        x,
+        base_y + vertical_offset,
+        animation_time=animation_time,
+        walking=False,
+        walk_frame=0,
+    )
+
+
 def wrap_text_lines(text, font, max_width):
     """Wrap text to a pixel width, including breaking unusually long words."""
     lines = []
@@ -1472,9 +1551,28 @@ def main():
     quiz_title_font = pygame.font.Font(None, 42)
     quiz_body_font = pygame.font.Font(None, 30)
     hud_font = pygame.font.Font(None, 27)
+    name_ui_scale = min(display_width / 582, display_height / 292)
+    name_title_font = pygame.font.SysFont("georgia", max(1, round(21 * name_ui_scale)), bold=True)
+    name_subtitle_font = pygame.font.SysFont("georgia", max(1, round(12 * name_ui_scale)))
+    name_entry_font = pygame.font.SysFont("georgia", max(1, round(16 * name_ui_scale)), bold=True)
+    name_key_font = pygame.font.SysFont("georgia", max(1, round(13 * name_ui_scale)), bold=True)
+    name_hint_font = pygame.font.SysFont("georgia", max(1, round(10 * name_ui_scale)))
+    player_label_font = pygame.font.Font(None, 15)
+    score_hud_base_size = max(34, round(display_height * 0.045))
+    score_font_cache = {}
     pygame.display.set_caption("Arcade Maze")
     clock = pygame.time.Clock()
     running = True
+    name_entry = True
+    player_name = ""
+    keyboard_row = 0
+    keyboard_column = 2
+    name_keyboard = [
+        list("QWERTYUIOP"),
+        list("ASDFGHJKLZ"),
+        [*list("XCVBNM"), "SPACE", "DEL"],
+        ["START"],
+    ]
     # These variables hold the active map and its puzzle/hazard progress.
     # A value of None means a timed hazard has not been triggered yet.
     maze = MAZE
@@ -1508,8 +1606,12 @@ def main():
     quiz_feedback = ""
     quiz_question = None
     quiz_selected_option = 0
+    death_animation_type = None
+    death_animation_started_at = None
+    death_animation_last_update_at = None
+    death_animation_world_time = None
     question_cache = {difficulty: [] for difficulty in ("Easy", "Medium", "Hard")}
-    question_cache_target = 4
+    question_cache_target = 1
     question_cache_lock = threading.Lock()
     question_generation_queue = queue.Queue()
     question_generation_in_progress = set()
@@ -1526,7 +1628,7 @@ def main():
     }
 
     def queue_question_generation(difficulty):
-        """Preload a small question buffer for this difficulty in the background."""
+        """Keep at most one ready or in-progress question for each difficulty."""
         with question_cache_lock:
             if (
                 len(question_cache[difficulty])
@@ -1552,13 +1654,11 @@ def main():
                     question_cache[difficulty].append(question)
                     question_generation_errors.pop(difficulty, None)
                     question_generation_in_progress.discard(difficulty)
-                queue_question_generation(difficulty)
             finally:
                 question_generation_queue.task_done()
 
     threading.Thread(target=question_generation_worker, daemon=True).start()
-    # Warm every difficulty while the player is exploring, then replenish its
-    # two-question buffer as soon as the buffer drops.
+    # Generate one question for each difficulty while the player enters their name.
     for question_difficulty in question_cache:
         queue_question_generation(question_difficulty)
 
@@ -1595,7 +1695,6 @@ def main():
             generation_error = question_generation_errors.get(quiz_difficulty)
         if quiz_question is not None:
             quiz_phase = "question"
-            queue_question_generation(quiz_difficulty)
         elif generation_error:
             quiz_phase = "error"
         else:
@@ -1624,6 +1723,15 @@ def main():
         quiz_phase = None
         quiz_started_at = None
 
+    def start_death_animation():
+        nonlocal death_animation_type, death_animation_started_at
+        nonlocal death_animation_last_update_at, death_animation_world_time
+        if death_animation_type is None:
+            death_animation_type = "universal"
+            death_animation_started_at = pygame.time.get_ticks()
+            death_animation_last_update_at = death_animation_started_at
+            death_animation_world_time = death_animation_started_at
+
     def reset_after_death():
         """Restart the whole active level, including Level 5's cave sections."""
         nonlocal level, maze, player_row, player_column, player_facing
@@ -1632,6 +1740,8 @@ def main():
         nonlocal boulder_started_at, upper_left_boulder_started_at, axes_started_at
         nonlocal carrying_cave_artifact, placed_cave_artifacts
         nonlocal east_arrows, east_arrows_last_fired_at, east_arrows_last_updated_at
+        nonlocal death_animation_type, death_animation_started_at
+        nonlocal death_animation_last_update_at, death_animation_world_time
 
         # Death inside a Level 5 side cave resets the whole Level 5 quest,
         # including relics, placed objects, traps, and arrows.
@@ -1660,11 +1770,37 @@ def main():
             east_arrows_last_updated_at = None
         player_facing = (-1, 0)
         section_exit_armed = False
+        death_animation_type = None
+        death_animation_started_at = None
+        death_animation_last_update_at = None
+        death_animation_world_time = None
         last_move_at = pygame.time.get_ticks()
         pygame.display.set_caption(f"Arcade Maze - Level {level}")
         begin_level_transition("You Died", quiz_reason="Player died")
 
     while running:
+        # Keep the exact hazard that caused the collision visible in its impact
+        # pose for the duration of the death animation.
+        if death_animation_type is not None and death_animation_last_update_at is not None:
+            now = pygame.time.get_ticks()
+            frozen_ms = now - death_animation_last_update_at
+            if boulder_started_at is not None:
+                boulder_started_at += frozen_ms
+            if upper_left_boulder_started_at is not None:
+                upper_left_boulder_started_at += frozen_ms
+            if level_four_boulder_started_at is not None:
+                level_four_boulder_started_at += frozen_ms
+            if axes_started_at is not None:
+                axes_started_at += frozen_ms
+            death_animation_last_update_at = now
+
+        if (
+            death_animation_type is not None
+            and death_animation_started_at is not None
+            and pygame.time.get_ticks() - death_animation_started_at >= 1350
+        ):
+            reset_after_death()
+
         if quiz_phase == "loading":
             with question_cache_lock:
                 if question_cache[quiz_difficulty]:
@@ -1675,13 +1811,50 @@ def main():
             if quiz_question is not None:
                 quiz_phase = "question"
                 quiz_selected_option = 0
-                queue_question_generation(quiz_difficulty)
             elif generation_error:
                 quiz_phase = "error"
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN and death_animation_type is not None:
+                continue
+            elif event.type == pygame.KEYDOWN and name_entry:
+                if event.key in (pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d):
+                    row_step, column_step = {
+                        pygame.K_w: (-1, 0), pygame.K_s: (1, 0),
+                        pygame.K_a: (0, -1), pygame.K_d: (0, 1),
+                    }[event.key]
+                    next_row = keyboard_row + row_step
+                    next_column = keyboard_column + column_step
+                    if 0 <= next_row < len(name_keyboard):
+                        if row_step:
+                            valid_columns = [
+                                index for index, label in enumerate(name_keyboard[next_row]) if label
+                            ]
+                            next_column = min(valid_columns, key=lambda index: abs(index - keyboard_column))
+                        else:
+                            while (
+                                0 <= next_column < len(name_keyboard[next_row])
+                                and not name_keyboard[next_row][next_column]
+                            ):
+                                next_column += column_step
+                            if not 0 <= next_column < len(name_keyboard[next_row]):
+                                continue
+                        keyboard_row, keyboard_column = next_row, next_column
+                elif event.key in (pygame.K_e, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    selected_key = name_keyboard[keyboard_row][keyboard_column]
+                    if selected_key == "START":
+                        if player_name.strip():
+                            player_name = player_name.strip()
+                            name_entry = False
+                    elif selected_key == "DEL":
+                        player_name = player_name[:-1]
+                    elif selected_key == "SPACE":
+                        if player_name and not player_name.endswith(" ") and len(player_name) < 16:
+                            player_name += " "
+                    elif selected_key and len(player_name) < 16:
+                        player_name += selected_key
             elif event.type == pygame.KEYDOWN and (
                 level_transition_started_at is not None
                 or (game_finished and quiz_phase is None)
@@ -1721,6 +1894,7 @@ def main():
                             else:
                                 quiz_feedback = f"Incorrect. The correct answer was {correct_answer}. Score stays at 0"
                             quiz_phase = "retry_result"
+                        queue_question_generation(quiz_difficulty)
                     quiz_selected_option = row * 2 + column
                 elif quiz_phase == "error" and event.key in (pygame.K_r, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                     with question_cache_lock:
@@ -2020,8 +2194,7 @@ def main():
                         east_arrows_last_updated_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level 5: {section['name']}")
                         begin_level_transition(
-                            f"Level 5: {section['name']}",
-                            quiz_reason=f"Entering {section['name']}",
+                            f"Level 5: {section['name']}"
                         )
                     elif level in LEVEL_FIVE_SECTIONS_BY_LEVEL:
                         section = LEVEL_FIVE_SECTIONS_BY_LEVEL[level]
@@ -2047,13 +2220,14 @@ def main():
                             else:
                                 player_facing = (0, -1)
                             pygame.display.set_caption(f"Arcade Maze - Level {level}")
-                            begin_level_transition("Level 5", quiz_reason=f"Leaving {section['name']}")
+                            begin_level_transition("Level 5")
 
         # East Cave arrows spawn on a timer, travel through the corridor, and
         # reset Level 5 if any arrow overlaps the player.
         if (
             level == 8
             and quiz_phase is None
+            and death_animation_type is None
             and level_transition_started_at is None
             and east_arrows_last_fired_at is not None
         ):
@@ -2083,10 +2257,10 @@ def main():
                 and abs(arrow["y"] - player_y) <= CELL_SIZE * 0.48
                 for arrow in east_arrows
             ):
-                reset_after_death()
+                start_death_animation()
 
         # Active boulders and swinging axes are checked for collisions each frame.
-        if level in (4, 5) and not game_finished and quiz_phase is None:
+        if level in (4, 5) and not game_finished and quiz_phase is None and death_animation_type is None:
             active_boulders = (
                 ((LEVEL_FOUR_BOULDER_PATH, level_four_boulder_started_at, LEVEL_FOUR_BOULDER_SPEED),)
                 if level == 4 else
@@ -2108,7 +2282,7 @@ def main():
                     continue
                 boulder_x, boulder_y = boulder_position
                 if (boulder_x - player_x) ** 2 + (boulder_y - player_y) ** 2 <= collision_distance ** 2:
-                    reset_after_death()
+                    start_death_animation()
                     break
             if axes_started_at is not None:
                 animation_time = pygame.time.get_ticks() / 1000
@@ -2119,7 +2293,7 @@ def main():
                     for row, column, phase in LEVEL_FIVE_SWINGING_AXES
                     if player_row == row
                 ):
-                    reset_after_death()
+                    start_death_animation()
 
         # Side caves use a smaller render surface so each complete map fits on screen.
         small_section = level in LEVEL_FIVE_SECTIONS_BY_LEVEL
@@ -2153,7 +2327,12 @@ def main():
             torches=torches if level == 4 else (),
             carried_torch=carrying_torch if level == 4 else False,
             lit_pillars=lit_pillars if level == 4 else (),
-            animation_time=pygame.time.get_ticks() / 1000,
+            animation_time=(
+                death_animation_world_time if death_animation_world_time is not None
+                else pygame.time.get_ticks()
+            ) / 1000,
+            player_name=player_name if not name_entry and death_animation_type is None else "",
+            player_label_font=player_label_font,
             walking=pygame.time.get_ticks() - last_move_at < 220,
             level_four_gate_slide_started_at=level_four_gate_slide_started_at if level == 4 else None,
             warm_cave=level == 5 or small_section,
@@ -2193,6 +2372,7 @@ def main():
             ) if level == 8 else (),
             arrow_pressure_plate_tile=LEVEL_FIVE_EAST_ARROW_PRESSURE_PLATE_TILE if level == 8 else None,
             arrow_pressure_plate_pressed=east_arrows_last_fired_at is not None if level == 8 else False,
+            draw_player=death_animation_type is None,
             additional_boulder_traps=(
                 ({
                     "plate": LEVEL_FOUR_PRESSURE_PLATE_TILE,
@@ -2211,13 +2391,25 @@ def main():
                 },) if level == 5 else ()
             ),
         )
+        if death_animation_type is not None and death_animation_started_at is not None:
+            maze_offset_x = (maze_surface.get_width() - len(maze[0]) * CELL_SIZE) // 2
+            maze_offset_y = (maze_surface.get_height() - len(maze) * CELL_SIZE) // 2
+            death_animation_time = (
+                death_animation_world_time if death_animation_world_time is not None
+                else pygame.time.get_ticks()
+            ) / 1000
+            character_idle_bob = int(death_animation_time * 2) % 2
+            draw_death_animation(
+                maze_surface,
+                pygame.time.get_ticks() - death_animation_started_at,
+                (
+                    maze_offset_x + player_column * CELL_SIZE + 1,
+                    maze_offset_y + player_row * CELL_SIZE + 2 - character_idle_bob,
+                ),
+                death_animation_time,
+            )
         if small_section:
             screen.blit(pygame.transform.scale(maze_surface, screen.get_size()), (0, 0))
-
-        score_surface = hud_font.render(f"Score: {score}", True, (255, 225, 165))
-        pygame.draw.rect(screen, (25, 20, 18), (10, 10, score_surface.get_width() + 18, score_surface.get_height() + 12), border_radius=5)
-        pygame.draw.rect(screen, (143, 98, 57), (10, 10, score_surface.get_width() + 18, score_surface.get_height() + 12), 2, border_radius=5)
-        screen.blit(score_surface, (19, 16))
 
         if level_transition_started_at is not None:
             transition_elapsed = pygame.time.get_ticks() - level_transition_started_at
@@ -2507,6 +2699,87 @@ def main():
         display_surface.blit(backdrop, (0, 0))
         scaled_screen = pygame.transform.scale(screen, fit_size)
         display_surface.blit(scaled_screen, scaled_screen.get_rect(center=display_surface.get_rect().center))
+        if name_entry:
+            ui_scale = name_ui_scale
+            origin_x = round((display_width - 582 * ui_scale) / 2)
+            origin_y = round((display_height - 292 * ui_scale) / 2)
+            point = lambda x, y: (origin_x + round(x * ui_scale), origin_y + round(y * ui_scale))
+            scaled = lambda value: max(1, round(value * ui_scale))
+
+            display_surface.fill((15, 15, 16))
+            edge_color = (58, 59, 60)
+            pygame.draw.line(display_surface, edge_color, point(0, 2), point(581, 2), scaled(1))
+            pygame.draw.line(display_surface, edge_color, point(0, 290), point(581, 290), scaled(1))
+            pygame.draw.line(display_surface, (31, 31, 32), point(1, 2), point(1, 290), scaled(1))
+            pygame.draw.line(display_surface, (31, 31, 32), point(580, 2), point(580, 290), scaled(1))
+            glow_layer = pygame.Surface(display_surface.get_size(), pygame.SRCALPHA)
+            for glow_x in (35, 547):
+                for radius, alpha in ((46, 8), (36, 12), (27, 18), (19, 26), (11, 38)):
+                    pygame.draw.circle(glow_layer, (226, 126, 54, alpha), point(glow_x, 29), scaled(radius))
+            display_surface.blit(glow_layer, (0, 0))
+
+            outer = pygame.Rect(*point(28, 28), scaled(526), scaled(238))
+            pygame.draw.rect(display_surface, (155, 99, 52), outer, border_radius=scaled(11))
+            inner = outer.inflate(-scaled(4), -scaled(4))
+            pygame.draw.rect(display_surface, (48, 35, 25), inner, border_radius=scaled(9))
+            panel = inner.inflate(-scaled(6), -scaled(6))
+            pygame.draw.rect(display_surface, (26, 24, 22), panel, border_radius=scaled(7))
+            pygame.draw.rect(display_surface, (76, 54, 37), panel, width=scaled(1), border_radius=scaled(7))
+
+            title_surface = name_title_font.render("ENTER YOUR NAME", True, (255, 199, 101))
+            display_surface.blit(title_surface, title_surface.get_rect(center=point(291, 59)))
+            subtitle_surface = name_subtitle_font.render("Your adventure begins here", True, (239, 223, 203))
+            display_surface.blit(subtitle_surface, subtitle_surface.get_rect(center=point(291, 81)))
+
+            name_box = pygame.Rect(*point(162, 102), scaled(260), scaled(36))
+            pygame.draw.rect(display_surface, (10, 10, 10), name_box, border_radius=scaled(5))
+            pygame.draw.rect(display_surface, (147, 96, 49), name_box, width=scaled(1), border_radius=scaled(5))
+            cursor = "_"
+            displayed_name = player_name + cursor if player_name else "Enter name here"
+            name_surface = name_entry_font.render(displayed_name, True, (239, 222, 196))
+            display_surface.blit(name_surface, name_surface.get_rect(midleft=(name_box.x + scaled(9), name_box.centery)))
+
+            for row_index, row in enumerate(name_keyboard):
+                for column_index, label in enumerate(row):
+                    if row_index == 0:
+                        x, y, width, height = 142 + column_index * 30, 150, 25, 24
+                    elif row_index == 1:
+                        x, y, width, height = 142 + column_index * 30, 178, 25, 24
+                    elif row_index == 2 and label in "XCVBNM":
+                        x, y, width, height = 142 + column_index * 30, 206, 25, 24
+                    elif row_index == 2:
+                        x, y, width, height = (324 if label == "SPACE" else 387), 206, (57 if label == "SPACE" else 54), 24
+                    else:
+                        x, y, width, height = 142, 234, 55, 23
+
+                    selected = (row_index, column_index) == (keyboard_row, keyboard_column)
+                    key_rect = pygame.Rect(*point(x, y), scaled(width), scaled(height))
+                    fill = (246, 184, 83) if selected else (51, 42, 34)
+                    edge = (255, 223, 161) if selected else (124, 89, 55)
+                    pygame.draw.rect(display_surface, fill, key_rect, border_radius=scaled(4))
+                    pygame.draw.rect(display_surface, edge, key_rect, width=scaled(1), border_radius=scaled(4))
+                    key_surface = name_key_font.render(label, True, (49, 34, 19) if selected else (238, 222, 201))
+                    display_surface.blit(key_surface, key_surface.get_rect(center=key_rect.center))
+            hint_surface = name_hint_font.render("W A S D move · E select", True, (226, 205, 177))
+            display_surface.blit(hint_surface, hint_surface.get_rect(center=point(291, 272)))
+        elif not name_entry:
+            score_text = f"{player_name}  |  Score: {score}"
+            score_font_size = score_hud_base_size
+            if score_font_size not in score_font_cache:
+                score_font_cache[score_font_size] = pygame.font.Font(None, score_font_size)
+            score_hud_font = score_font_cache[score_font_size]
+            score_surface = score_hud_font.render(score_text, True, (255, 225, 165))
+            max_score_width = max(220, side_width - 42)
+            while score_surface.get_width() + 30 > max_score_width and score_font_size > 20:
+                score_font_size -= 1
+                if score_font_size not in score_font_cache:
+                    score_font_cache[score_font_size] = pygame.font.Font(None, score_font_size)
+                score_hud_font = score_font_cache[score_font_size]
+                score_surface = score_hud_font.render(score_text, True, (255, 225, 165))
+            score_box = score_surface.get_rect(topleft=(26, 28)).inflate(30, 20)
+            pygame.draw.rect(display_surface, (25, 20, 18), score_box, border_radius=7)
+            pygame.draw.rect(display_surface, (143, 98, 57), score_box, width=3, border_radius=7)
+            display_surface.blit(score_surface, score_surface.get_rect(center=score_box.center))
         pygame.display.flip()
         clock.tick(60)
 
