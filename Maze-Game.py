@@ -462,7 +462,7 @@ LEVEL_THREE_BUTTONS = [
     {"wall": (28, 0)},
 ]
 LEVEL_FOUR_PILLARS = ((14, 14), (14, 16), (16, 14), (16, 16))
-LEVEL_FOUR_GATE_TILE = (0, 15)
+LEVEL_FOUR_EXIT_TILE = (EXIT_ROW, EXIT_COLUMN)
 LEVEL_FOUR_TORCHES = ((1, 30, "surface"), (18, 21, "surface"), (27, 0, "surface"), (28, 15, "surface"))
 LEVEL_FOUR_PRESSURE_PLATE_TILE = (13, 29)
 LEVEL_FOUR_BOULDER_SPAWN_TILE = (25, 30)
@@ -499,7 +499,6 @@ def draw_maze(
     player_name="",
     player_label_font=None,
     walking=False,
-    level_four_gate_slide_started_at=None,
     warm_cave=False,
     classic_cave=False,
     viewport_size=None,
@@ -595,9 +594,8 @@ def draw_maze(
             if tile == "#":
                 wall_y = y
                 is_level_three_gate = (row, column) == GATE_TILE
-                is_level_four_gate = (row, column) == LEVEL_FOUR_GATE_TILE
-                gate_started_at = gate_slide_started_at if is_level_three_gate else level_four_gate_slide_started_at
-                is_gate = is_level_three_gate or is_level_four_gate
+                gate_started_at = gate_slide_started_at if is_level_three_gate else None
+                is_gate = is_level_three_gate
                 if is_gate and gate_started_at is not None:
                     elapsed = pygame.time.get_ticks() - gate_started_at
                     slide = min(CELL_SIZE, int(CELL_SIZE * elapsed / GATE_SLIDE_DURATION))
@@ -1531,6 +1529,9 @@ def main():
     project_dir = Path(__file__).resolve().parent
     left_cave_art = pygame.image.load(str(project_dir / "assets" / "maze_cave_left.png")).convert()
     right_cave_art = pygame.image.load(str(project_dir / "assets" / "maze_cave_right.png")).convert()
+    how_to_play_panel = pygame.image.load(
+        str(project_dir / "assets" / "how_to_play_panel.png")
+    ).convert_alpha()
     backdrop = pygame.Surface(display_surface.get_size())
     backdrop.fill((8, 9, 10))
     side_width = (display_width - fit_size[0]) // 2
@@ -1564,6 +1565,7 @@ def main():
     clock = pygame.time.Clock()
     running = True
     name_entry = True
+    how_to_play_screen = False
     player_name = ""
     keyboard_row = 0
     keyboard_column = 2
@@ -1582,7 +1584,6 @@ def main():
     level = 1
     buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
     gate_slide_started_at = None
-    level_four_gate_slide_started_at = None
     torches = []
     carrying_torch = False
     lit_pillars = set()
@@ -1618,6 +1619,11 @@ def main():
     question_generation_errors = {}
     quiz_started_at = None
     score = 0
+    level_one_started_at = None
+    level_two_started_at = None
+    level_three_started_at = None
+    level_four_started_at = None
+    level_five_started_at = None
     last_move_at = 0
     pygame.display.set_caption(f"Arcade Maze - Level {level}")
     movement = {
@@ -1703,6 +1709,10 @@ def main():
 
     def close_quiz():
         nonlocal quiz_phase, quiz_started_at
+        nonlocal level_two_started_at
+        nonlocal level_three_started_at
+        nonlocal level_four_started_at
+        nonlocal level_five_started_at
         nonlocal boulder_started_at, upper_left_boulder_started_at
         nonlocal level_four_boulder_started_at, axes_started_at
         nonlocal east_arrows_last_fired_at, east_arrows_last_updated_at
@@ -1720,6 +1730,14 @@ def main():
             east_arrows_last_fired_at += paused_ms
         if east_arrows_last_updated_at is not None:
             east_arrows_last_updated_at += paused_ms
+        if level == 2 and quiz_reason.startswith("Level 1 complete"):
+            level_two_started_at = pygame.time.get_ticks()
+        if level == 3 and quiz_reason.startswith("Level 2 complete"):
+            level_three_started_at = pygame.time.get_ticks()
+        if level == 4 and quiz_reason.startswith("Level 3 complete"):
+            level_four_started_at = pygame.time.get_ticks()
+        if level == 5 and quiz_reason.startswith("Level 4 complete"):
+            level_five_started_at = pygame.time.get_ticks()
         quiz_phase = None
         quiz_started_at = None
 
@@ -1735,7 +1753,7 @@ def main():
     def reset_after_death():
         """Restart the whole active level, including Level 5's cave sections."""
         nonlocal level, maze, player_row, player_column, player_facing
-        nonlocal torches, carrying_torch, lit_pillars, level_four_gate_slide_started_at
+        nonlocal torches, carrying_torch, lit_pillars
         nonlocal level_four_boulder_started_at, section_exit_armed
         nonlocal boulder_started_at, upper_left_boulder_started_at, axes_started_at
         nonlocal carrying_cave_artifact, placed_cave_artifacts
@@ -1754,7 +1772,6 @@ def main():
             torches = list(LEVEL_FOUR_TORCHES)
             carrying_torch = False
             lit_pillars = set()
-            level_four_gate_slide_started_at = None
             level_four_boulder_started_at = None
         else:
             level = 5
@@ -1848,6 +1865,7 @@ def main():
                         if player_name.strip():
                             player_name = player_name.strip()
                             name_entry = False
+                            how_to_play_screen = True
                     elif selected_key == "DEL":
                         player_name = player_name[:-1]
                     elif selected_key == "SPACE":
@@ -1855,6 +1873,10 @@ def main():
                             player_name += " "
                     elif selected_key and len(player_name) < 16:
                         player_name += selected_key
+            elif event.type == pygame.KEYDOWN and how_to_play_screen:
+                if event.key in (pygame.K_e, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    how_to_play_screen = False
+                    level_one_started_at = pygame.time.get_ticks()
             elif event.type == pygame.KEYDOWN and (
                 level_transition_started_at is not None
                 or (game_finished and quiz_phase is None)
@@ -1882,8 +1904,11 @@ def main():
                         selected_answer = "ABCD"[quiz_selected_option]
                         reward = {"Easy": 10, "Medium": 25, "Hard": 50}[quiz_difficulty]
                         if selected_answer == quiz_question["correct_answer"]:
-                            score += reward
-                            quiz_feedback = f"Correct! {selected_answer} is right. Reward: {reward} points"
+                            if quiz_reason != "Player died":
+                                score += reward
+                                quiz_feedback = f"Correct! {selected_answer} is right. Reward: {reward} points"
+                            else:
+                                quiz_feedback = f"Correct! {selected_answer} is right. No points awarded for respawning."
                             quiz_phase = "result"
                         else:
                             deduction = min(score, reward)
@@ -1922,12 +1947,14 @@ def main():
                 maze = generate_new_maze()
                 player_row = START_ROW
                 player_column = START_COLUMN
+                level_two_started_at = pygame.time.get_ticks()
                 pygame.display.set_caption(f"Arcade Maze - Level {level}")
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_3:
                 level = 3
                 maze = LEVEL_THREE_MAZE.copy()
                 player_row = LEVEL_THREE_START_ROW
                 player_column = LEVEL_THREE_START_COLUMN
+                level_three_started_at = pygame.time.get_ticks()
                 player_facing = (-1, 0)
                 buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
                 gate_slide_started_at = None
@@ -1937,13 +1964,13 @@ def main():
                 maze = LEVEL_FOUR_MAZE.copy()
                 player_row = START_ROW
                 player_column = START_COLUMN
+                level_four_started_at = pygame.time.get_ticks()
                 player_facing = (-1, 0)
                 buttons = []
                 gate_slide_started_at = None
                 torches = list(LEVEL_FOUR_TORCHES)
                 carrying_torch = False
                 lit_pillars = set()
-                level_four_gate_slide_started_at = None
                 section_exit_armed = False
                 level_four_boulder_started_at = None
                 pygame.display.set_caption(f"Arcade Maze - Level {level}")
@@ -1952,12 +1979,12 @@ def main():
                 maze = LEVEL_FIVE_MAZE.copy()
                 player_row = LEVEL_FIVE_START_ROW
                 player_column = LEVEL_FIVE_START_COLUMN
+                level_five_started_at = pygame.time.get_ticks()
                 player_facing = (-1, 0)
                 buttons = []
                 torches = []
                 carrying_torch = False
                 lit_pillars = set()
-                level_four_gate_slide_started_at = None
                 section_exit_armed = False
                 boulder_started_at = None
                 upper_left_boulder_started_at = None
@@ -2027,8 +2054,6 @@ def main():
                         if pillar is not None:
                             lit_pillars.add(pillar)
                             carrying_torch = False
-                            if len(lit_pillars) == len(LEVEL_FOUR_PILLARS):
-                                level_four_gate_slide_started_at = pygame.time.get_ticks()
                     else:
                         torch = next(
                             (item for item in torches if tiles_are_adjacent(player_position, item[:2])),
@@ -2053,15 +2078,12 @@ def main():
                 )
                 pillar_blocked = level == 4 and (next_row, next_column) in LEVEL_FOUR_PILLARS
                 rock_blocked = level == 5 and (next_row, next_column) in LEVEL_FIVE_ROCKS
-                level_four_gate_is_open = (
-                    level == 4
-                    and level_four_gate_slide_started_at is not None
-                    and pygame.time.get_ticks() - level_four_gate_slide_started_at >= GATE_SLIDE_DURATION
+                level_four_exit_unlocked = (
+                    level == 4 and len(lit_pillars) == len(LEVEL_FOUR_PILLARS)
                 )
                 if (
                     (destination != "#" and not pillar_blocked and not rock_blocked)
                     or ((next_row, next_column) == GATE_TILE and gate_is_open)
-                    or ((next_row, next_column) == LEVEL_FOUR_GATE_TILE and level_four_gate_is_open)
                 ):
                     previous_position = (player_row, player_column)
                     player_row = next_row
@@ -2125,59 +2147,110 @@ def main():
                         and (player_row, player_column) == (LEVEL_FIVE_EXIT_ROW, LEVEL_FIVE_EXIT_COLUMN)
                         and len(placed_cave_artifacts) == len(LEVEL_FIVE_ROCKS)
                     ):
+                        elapsed_ms = (
+                            pygame.time.get_ticks() - level_five_started_at
+                            if level_five_started_at is not None else 0
+                        )
+                        speed_bonus = 100 if elapsed_ms <= 105_000 else 50 if elapsed_ms < 135_000 else 25
+                        score += speed_bonus
                         game_finished = True
-                        begin_level_transition("Game Finished!", quiz_reason="Level 5 complete")
+                        begin_level_transition(
+                            "Game Finished!",
+                            quiz_reason=f"Level 5 complete — {speed_bonus} speed bonus points",
+                        )
                     # Exit tiles load the next map and use a short transition
                     # animation so the level change is clear to the player.
                     elif (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 1:
+                        elapsed_seconds = (
+                            (pygame.time.get_ticks() - level_one_started_at) / 1000
+                            if level_one_started_at is not None else 0
+                        )
+                        speed_bonus = 100 if elapsed_seconds <= 15 else 50 if elapsed_seconds <= 30 else 25
+                        score += speed_bonus
                         level = 2
                         maze = generate_new_maze()
                         player_row = START_ROW
                         player_column = START_COLUMN
+                        level_two_started_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
-                        begin_level_transition(f"Level {level}", quiz_reason=f"Level {level - 1} complete")
+                        begin_level_transition(
+                            f"Level {level}",
+                            quiz_reason=f"Level 1 complete — {speed_bonus} speed bonus points",
+                        )
                     elif (player_row, player_column) == (EXIT_ROW, LEVEL_TWO_EXIT_COLUMN) and level == 2:
+                        elapsed_seconds = (
+                            (pygame.time.get_ticks() - level_two_started_at) / 1000
+                            if level_two_started_at is not None else 0
+                        )
+                        speed_bonus = 100 if elapsed_seconds <= 15 else 50 if elapsed_seconds <= 30 else 25
+                        score += speed_bonus
                         level = 3
                         maze = LEVEL_THREE_MAZE.copy()
                         player_row = LEVEL_THREE_START_ROW
                         player_column = LEVEL_THREE_START_COLUMN
+                        level_three_started_at = None
                         player_facing = (-1, 0)
                         buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
                         gate_slide_started_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
-                        begin_level_transition(f"Level {level}", quiz_reason=f"Level {level - 1} complete")
+                        begin_level_transition(
+                            f"Level {level}",
+                            quiz_reason=f"Level 2 complete — {speed_bonus} speed bonus points",
+                        )
                     elif (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 3:
+                        elapsed_seconds = (
+                            (pygame.time.get_ticks() - level_three_started_at) / 1000
+                            if level_three_started_at is not None else 0
+                        )
+                        speed_bonus = 100 if elapsed_seconds <= 35 else 50 if elapsed_seconds <= 60 else 25
+                        score += speed_bonus
                         level = 4
                         maze = LEVEL_FOUR_MAZE.copy()
                         player_row = START_ROW
                         player_column = START_COLUMN
+                        level_four_started_at = None
                         player_facing = (-1, 0)
                         buttons = []
                         gate_slide_started_at = None
                         torches = list(LEVEL_FOUR_TORCHES)
                         carrying_torch = False
                         lit_pillars = set()
-                        level_four_gate_slide_started_at = None
                         level_four_boulder_started_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
-                        begin_level_transition(f"Level {level}", quiz_reason=f"Level {level - 1} complete")
-                    elif (player_row, player_column) == LEVEL_FOUR_GATE_TILE and level == 4:
+                        begin_level_transition(
+                            f"Level {level}",
+                            quiz_reason=f"Level 3 complete — {speed_bonus} speed bonus points",
+                        )
+                    elif (
+                        (player_row, player_column) == LEVEL_FOUR_EXIT_TILE
+                        and level == 4
+                        and len(lit_pillars) == len(LEVEL_FOUR_PILLARS)
+                    ):
+                        elapsed_seconds = (
+                            (pygame.time.get_ticks() - level_four_started_at) / 1000
+                            if level_four_started_at is not None else 0
+                        )
+                        speed_bonus = 100 if elapsed_seconds <= 35 else 50 if elapsed_seconds <= 60 else 25
+                        score += speed_bonus
                         level = 5
                         maze = LEVEL_FIVE_MAZE.copy()
                         player_row = LEVEL_FIVE_START_ROW
                         player_column = LEVEL_FIVE_START_COLUMN
+                        level_five_started_at = None
                         player_facing = (-1, 0)
                         torches = []
                         carrying_torch = False
                         lit_pillars = set()
-                        level_four_gate_slide_started_at = None
                         section_exit_armed = False
                         boulder_started_at = None
                         upper_left_boulder_started_at = None
                         level_four_boulder_started_at = None
                         axes_started_at = None
                         pygame.display.set_caption(f"Arcade Maze - Level {level}")
-                        begin_level_transition(f"Level {level}", quiz_reason=f"Level {level - 1} complete")
+                        begin_level_transition(
+                            f"Level {level}",
+                            quiz_reason=f"Level 4 complete — {speed_bonus} speed bonus points",
+                        )
                     elif level == 5 and (player_row, player_column) in LEVEL_FIVE_SECTIONS:
                         section = LEVEL_FIVE_SECTIONS[(player_row, player_column)]
                         level = section["level"]
@@ -2302,12 +2375,8 @@ def main():
         level_five_portal_tiles = tuple(LEVEL_FIVE_SECTIONS) if level == 5 else ()
         if level == 5 and len(placed_cave_artifacts) == len(LEVEL_FIVE_ROCKS):
             level_five_portal_tiles += ((LEVEL_FIVE_EXIT_ROW, LEVEL_FIVE_EXIT_COLUMN),)
-        if (
-            level == 4
-            and level_four_gate_slide_started_at is not None
-            and pygame.time.get_ticks() - level_four_gate_slide_started_at >= GATE_SLIDE_DURATION
-        ):
-            level_five_portal_tiles += (LEVEL_FOUR_GATE_TILE,)
+        if level == 4 and len(lit_pillars) == len(LEVEL_FOUR_PILLARS):
+            level_five_portal_tiles += (LEVEL_FOUR_EXIT_TILE,)
         # The shared renderer receives only the props and effects for this level.
         draw_maze(
             maze_surface,
@@ -2334,7 +2403,6 @@ def main():
             player_name=player_name if not name_entry and death_animation_type is None else "",
             player_label_font=player_label_font,
             walking=pygame.time.get_ticks() - last_move_at < 220,
-            level_four_gate_slide_started_at=level_four_gate_slide_started_at if level == 4 else None,
             warm_cave=level == 5 or small_section,
             classic_cave=level in (1, 2),
             viewport_size=section_view_size,
@@ -2512,9 +2580,9 @@ def main():
                     difficulty_title.get_rect(center=(panel.centerx, panel.top + 91)),
                 )
                 difficulty_options = (
-                    ("EASY", "Safety basics  ·  +10 points"),
-                    ("MEDIUM", "Everyday situations  ·  +25 points"),
-                    ("HARD", "Beginner challenge  ·  +50 points"),
+                    ("EASY", "Safety basics"),
+                    ("MEDIUM", "Everyday situations"),
+                    ("HARD", "Challenge"),
                 )
                 difficulty_fills = ((78, 56, 45), (69, 53, 46), (82, 58, 43))
                 difficulty_width = panel.width - 110
@@ -2762,7 +2830,20 @@ def main():
                     display_surface.blit(key_surface, key_surface.get_rect(center=key_rect.center))
             hint_surface = name_hint_font.render("W A S D move · E select", True, (226, 205, 177))
             display_surface.blit(hint_surface, hint_surface.get_rect(center=point(291, 272)))
-        elif not name_entry:
+        elif how_to_play_screen:
+            panel_scale = min(
+                (fit_size[0] - 16) / how_to_play_panel.get_width(),
+                (display_height - 24) / how_to_play_panel.get_height(),
+            )
+            panel_size = (
+                round(how_to_play_panel.get_width() * panel_scale),
+                round(how_to_play_panel.get_height() * panel_scale),
+            )
+            scaled_panel = pygame.transform.smoothscale(how_to_play_panel, panel_size)
+            panel_rect = scaled_panel.get_rect(center=display_surface.get_rect().center)
+            display_surface.blit(scaled_panel, panel_rect)
+
+        if not name_entry:
             score_text = f"{player_name}  |  Score: {score}"
             score_font_size = score_hud_base_size
             if score_font_size not in score_font_cache:
