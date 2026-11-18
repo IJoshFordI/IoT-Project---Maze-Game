@@ -3,3 +3,5 @@ gunicorn
 google-genai
 pydantic
 Flask-Limiter
+Flask-Cors
+psycopg[binary]

@@ -3,30 +3,337 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#101827">
-  <title>Leaderboard Website</title>
+  <meta name="theme-color" content="#100e0c">
+  <meta name="description" content="See how you rank in the Arcade Maze adventurers leaderboard.">
+  <title>Hall of Heroes — Arcade Maze</title>
   <style>
-    * { box-sizing: border-box; }
-    body {
-      min-height: 100vh;
-      margin: 0;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-      color: #f8fafc;
-      background: radial-gradient(ellipse at top, #253b63 0%, #101827 58%);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      text-align: center;
+    :root {
+      color-scheme: dark;
+      --bg: #100e0c;
+      --panel: #191613;
+      --panel-soft: #201b16;
+      --line: #34291e;
+      --text: #f3eadb;
+      --muted: #a89c8a;
+      --gold: #f5b84b;
+      --orange: #df762c;
+      --green: #a7c686;
     }
-    main { max-width: 600px; }
-    p { color: #a9bbd5; font-size: 1.1rem; }
-    h1 { margin: 0; font-size: clamp(3rem, 10vw, 5rem); letter-spacing: -0.06em; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 50% -20%, rgba(180, 92, 33, .18), transparent 50%),
+        var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: inherit; text-decoration: none; }
+    button, input { font: inherit; }
+    .site-header {
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(20px, 6vw, 88px);
+      border-bottom: 1px solid rgba(255,255,255,.07);
+      background: rgba(16,14,12,.82);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 750; letter-spacing: .02em; }
+    .brand-mark {
+      display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid #875123;
+      border-radius: 11px; color: var(--gold); background: linear-gradient(145deg,#342218,#1a1511);
+      box-shadow: 0 0 24px rgba(223,118,44,.12);
+    }
+    .brand-mark svg { width: 24px; height: 24px; }
+    .brand small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; }
+    .nav-link { display: inline-flex; align-items: center; gap: 9px; color: #d1c3ae; font-size: 13px; font-weight: 650; }
+    .nav-link:hover { color: var(--gold); }
+    .nav-link svg { width: 17px; height: 17px; }
+    .hero {
+      position: relative; isolation: isolate; overflow: hidden; min-height: 340px;
+      display: flex; align-items: center; padding: 64px clamp(20px, 9vw, 136px);
+      border-bottom: 1px solid #35271b;
+      background-image: linear-gradient(90deg,rgba(16,14,12,.97) 2%,rgba(16,14,12,.82) 48%,rgba(16,14,12,.37) 100%),
+        linear-gradient(0deg,rgba(16,14,12,.68),transparent 55%),url("assets/maze_cave_left.png");
+      background-size: cover,cover,auto 170%; background-position: center,center,75% 48%;
+    }
+    .hero::after {
+      content: ""; position: absolute; z-index: -1; right: 11%; top: 50%; width: 190px; height: 190px;
+      transform: translateY(-50%) rotate(45deg); border: 1px solid rgba(245,184,75,.25);
+      box-shadow: 0 0 0 14px rgba(245,184,75,.035),0 0 0 30px rgba(245,184,75,.025),inset 0 0 45px rgba(223,118,44,.11);
+    }
+    .hero-copy { max-width: 680px; }
+    .eyebrow { display: flex; align-items: center; gap: 10px; margin: 0 0 17px; color: var(--gold); font-size: 11px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; }
+    .eyebrow::before { content: ""; width: 26px; height: 1px; background: var(--orange); }
+    h1 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(42px, 7vw, 76px); font-weight: 500; line-height: .98; letter-spacing: -.045em; }
+    h1 span { color: var(--gold); }
+    .hero-copy > p:last-child { max-width: 490px; margin: 19px 0 0; color: #c3b5a1; font-size: 15px; line-height: 1.7; }
+    main { width: min(1100px, calc(100% - 40px)); margin: 0 auto; padding: 42px 0 70px; }
+    .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+    .section-heading h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(25px,4vw,34px); font-weight: 500; }
+    .section-heading p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+    .preview-tag { display: inline-flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid #574322; border-radius: 999px; color: #f3ce83; background: rgba(245,184,75,.07); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+    .preview-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+    .toolbar { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
+    .periods { display: flex; gap: 5px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: #15120f; }
+    .period-button { min-height: 38px; padding: 0 15px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; transition: .18s ease; }
+    .period-button:hover { color: var(--text); }
+    .period-button[aria-pressed="true"] { color: #21170b; background: var(--gold); box-shadow: 0 3px 12px rgba(245,184,75,.14); }
+    .search-wrap { position: relative; width: min(250px, 42vw); }
+    .search-wrap svg { position: absolute; left: 13px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: #897c68; }
+    .search-wrap input { width: 100%; height: 46px; padding: 0 14px 0 39px; border: 1px solid var(--line); border-radius: 11px; outline: none; color: var(--text); background: #15120f; font-size: 12px; }
+    .search-wrap input:focus { border-color: #a96b31; box-shadow: 0 0 0 3px rgba(223,118,44,.12); }
+    .search-wrap input::placeholder { color: #817665; }
+    .podium { display: grid; grid-template-columns: 1fr 1.08fr 1fr; align-items: end; gap: 14px; margin: 0 0 22px; }
+    .podium-card { position: relative; display: flex; min-height: 190px; flex-direction: column; align-items: center; justify-content: end; padding: 19px 14px 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(160deg,#211c17,#171411 72%); text-align: center; }
+    .podium-card.first { min-height: 224px; border-color: #795322; background: radial-gradient(ellipse at 50% 0%,rgba(245,184,75,.15),transparent 65%),linear-gradient(160deg,#292015,#181410 72%); }
+    .podium-card::before { content: ""; position: absolute; top: -32px; left: 50%; width: 140px; height: 90px; transform: translateX(-50%); border-radius: 50%; background: rgba(223,118,44,.09); filter: blur(25px); }
+    .rank-medal { position: absolute; top: 15px; left: 16px; color: #9c8d78; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+    .first .rank-medal { color: var(--gold); }
+    .avatar { position: relative; display: grid; place-items: center; width: 54px; height: 54px; margin-bottom: 12px; border: 1px solid #71502d; border-radius: 50%; color: #f4d9a5; background: linear-gradient(145deg,#50351f,#211a14); font-family: Georgia,serif; font-size: 20px; box-shadow: 0 0 22px rgba(223,118,44,.13); }
+    .first .avatar { width: 64px; height: 64px; border-color: #bc862f; color: #ffe6ae; font-size: 23px; }
+    .crown { position: absolute; top: -14px; right: -9px; color: var(--gold); font-size: 17px; }
+    .podium-name { max-width: 100%; overflow: hidden; color: var(--text); font-size: 14px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+    .podium-level { margin-top: 5px; color: var(--muted); font-size: 10px; }
+    .podium-score { margin-top: 13px; color: var(--gold); font-size: 22px; font-weight: 800; letter-spacing: -.04em; }
+    .podium-score small { margin-left: 3px; color: #ae9b7f; font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+    .table-card { overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: #171411; }
+    .table-head,.player-row { display: grid; grid-template-columns: 70px minmax(170px,1fr) 125px 120px; align-items: center; gap: 14px; padding: 0 23px; }
+    .table-head { min-height: 46px; color: #8f8372; background: #1d1915; font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    .player-row { min-height: 69px; border-top: 1px solid rgba(255,255,255,.055); transition: background .18s ease; }
+    .player-row:hover { background: #201b16; }
+    .rank { color: #998c79; font-size: 13px; font-weight: 750; }
+    .player-cell { display: flex; min-width: 0; align-items: center; gap: 12px; }
+    .mini-avatar { display: grid; flex: 0 0 34px; place-items: center; width: 34px; height: 34px; border: 1px solid #443321; border-radius: 10px; color: #dbc291; background: #272017; font-family: Georgia,serif; font-size: 13px; }
+    .player-info { min-width: 0; }
+    .player-name { overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .player-sub { margin-top: 4px; color: #8e8271; font-size: 10px; }
+    .level { color: #b4a58d; font-size: 11px; }
+    .level span { color: var(--orange); }
+    .score { color: var(--gold); font-size: 13px; font-weight: 800; text-align: right; }
+    .empty-state { display: none; padding: 28px; color: var(--muted); text-align: center; font-size: 13px; }
+    .footnote { display: flex; align-items: flex-start; gap: 10px; margin: 16px 2px 0; color: #988c7a; font-size: 11px; line-height: 1.6; }
+    .footnote svg { flex: 0 0 15px; width: 15px; height: 15px; margin-top: 1px; color: #c69242; }
+    footer { display: flex; justify-content: space-between; gap: 12px; padding: 20px clamp(20px,6vw,88px); border-top: 1px solid rgba(255,255,255,.07); color: #807666; font-size: 10px; }
+    footer span:last-child { color: #a89069; }
+    @media (max-width: 650px) {
+      .site-header { height: 66px; }
+      .hero { min-height: 300px; padding-top: 50px; padding-bottom: 50px; background-position: center,center,67% 45%; }
+      .hero::after { right: -55px; opacity: .6; }
+      main { width: min(100% - 28px, 520px); padding-top: 32px; }
+      .section-heading { align-items: flex-start; }
+      .section-heading p { max-width: 260px; line-height: 1.5; }
+      .preview-tag { padding: 7px 9px; font-size: 8px; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .periods { justify-content: space-between; }
+      .period-button { flex: 1; padding: 0 7px; font-size: 11px; }
+      .search-wrap { width: 100%; }
+      .podium { gap: 7px; }
+      .podium-card { min-height: 172px; padding: 16px 7px 14px; }
+      .podium-card.first { min-height: 198px; }
+      .avatar { width: 43px; height: 43px; font-size: 17px; }
+      .first .avatar { width: 52px; height: 52px; font-size: 20px; }
+      .podium-name { font-size: 11px; }
+      .podium-level { font-size: 9px; }
+      .podium-score { font-size: 18px; }
+      .table-head,.player-row { grid-template-columns: 34px minmax(110px,1fr) 80px 80px; gap: 7px; padding: 0 11px; }
+      .table-head { font-size: 8px; }
+      .player-row { min-height: 64px; }
+      .player-cell { gap: 8px; }
+      .mini-avatar { flex-basis: 29px; width: 29px; height: 29px; }
+      .player-name { font-size: 11px; }
+      .player-sub { font-size: 9px; }
+      .level,.score { font-size: 10px; }
+      footer { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; transition: none !important; } }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Hello World</h1>
-    <p>Welcome to the Leaderboard Website.</p>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Arcade Maze home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 20V4h16v16H8V8h8v8h-4v-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 2v3M2 12h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </span>
+      <span>ARCADE MAZE<small>Adventurer's guild</small></span>
+    </a>
+    <a class="nav-link" href="#rankings">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 21h8m-4-4v4M5 4h14v3a7 7 0 0 1-14 0V4Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 6H3v2a4 4 0 0 0 4 4m12-6h2v2a4 4 0 0 1-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      Rankings
+    </a>
+  </header>
+
+  <section class="hero" id="top" aria-labelledby="page-title">
+    <div class="hero-copy">
+      <p class="eyebrow">The expedition continues</p>
+      <h1 id="page-title">Hall of <span>Heroes</span></h1>
+      <p>Every corridor has a story. See which brave explorers have carried the most treasure out of the maze.</p>
+    </div>
+  </section>
+
+  <main id="rankings">
+    <div class="section-heading">
+      <div>
+        <h2>Top adventurers</h2>
+        <p>Those who ventured deepest into the caves.</p>
+      </div>
+      <span class="preview-tag">Live leaderboard</span>
+    </div>
+
+    <div class="toolbar">
+      <div class="periods" role="group" aria-label="Filter leaderboard by time period">
+        <button class="period-button" type="button" data-period="all" aria-pressed="true">All time</button>
+        <button class="period-button" type="button" data-period="week" aria-pressed="false">Last 7 days</button>
+      </div>
+      <label class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <input id="player-search" type="search" placeholder="Find an adventurer" aria-label="Search adventurers">
+      </label>
+    </div>
+
+    <section class="podium" id="podium" aria-label="Top three adventurers"></section>
+
+    <section class="table-card" aria-label="More leaderboard players">
+      <div class="table-head"><span>Rank</span><span>Adventurer</span><span>Progress</span><span style="text-align:right">Score</span></div>
+      <div id="player-list"></div>
+      <div class="empty-state" id="empty-state">Loading scores from the maze…</div>
+    </section>
+
+    <p class="footnote">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 11v5m0-8h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      Your best score is saved when you complete the maze. Scores are grouped by player name.
+    </p>
   </main>
+
+  <footer><span>© 2026 Arcade Maze Adventurer's Guild</span><span>Keep your torch lit. The maze awaits.</span></footer>
+
+  <script src="leaderboard-config.js"></script>
+  <script>
+    const periodButtons = document.querySelectorAll(".period-button");
+    const podium = document.querySelector("#podium");
+    const playerList = document.querySelector("#player-list");
+    const search = document.querySelector("#player-search");
+    const emptyState = document.querySelector("#empty-state");
+    let period = "all";
+    let entries = [];
+    const apiUrl = window.LEADERBOARD_API_URL;
+
+    function initials(name) {
+      return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+    }
+
+    function renderEntries() {
+      const query = search.value.trim().toLowerCase();
+      const visible = entries.filter((entry) => entry.name.toLowerCase().includes(query));
+      const topThree = visible.slice(0, 3);
+      const podiumOrder = topThree.length > 1
+        ? [topThree[1], topThree[0], topThree[2]].filter(Boolean)
+        : topThree;
+      const labels = { 1: "CHAMPION", 2: "SILVER", 3: "BRONZE" };
+
+      podium.replaceChildren(...podiumOrder.map((entry) => {
+        const card = document.createElement("article");
+        card.className = `podium-card${entry.rank === 1 ? " first" : ""}`;
+        const medal = document.createElement("span");
+        medal.className = "rank-medal";
+        medal.textContent = `${String(entry.rank).padStart(2, "0")} / ${labels[entry.rank] || "RANK"}`;
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = initials(entry.name);
+        if (entry.rank === 1) {
+          const crown = document.createElement("span");
+          crown.className = "crown";
+          crown.textContent = "♛";
+          avatar.append(crown);
+        }
+        const name = document.createElement("div");
+        name.className = "podium-name";
+        name.textContent = entry.name;
+        const level = document.createElement("div");
+        level.className = "podium-level";
+        level.textContent = `Reached Level ${entry.level}`;
+        const score = document.createElement("div");
+        score.className = "podium-score";
+        score.textContent = Number(entry.score).toLocaleString();
+        const unit = document.createElement("small");
+        unit.textContent = "PTS";
+        score.append(unit);
+        card.append(medal, avatar, name, level, score);
+        return card;
+      }));
+
+      const rows = visible.slice(3).map((entry) => {
+        const row = document.createElement("article");
+        row.className = "player-row";
+        const rank = document.createElement("span");
+        rank.className = "rank";
+        rank.textContent = String(entry.rank).padStart(2, "0");
+        const player = document.createElement("div");
+        player.className = "player-cell";
+        const avatar = document.createElement("span");
+        avatar.className = "mini-avatar";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = initials(entry.name);
+        const info = document.createElement("div");
+        info.className = "player-info";
+        const name = document.createElement("div");
+        name.className = "player-name";
+        name.textContent = entry.name;
+        const subtitle = document.createElement("div");
+        subtitle.className = "player-sub";
+        subtitle.textContent = "Maze explorer";
+        info.append(name, subtitle);
+        player.append(avatar, info);
+        const level = document.createElement("div");
+        level.className = "level";
+        level.innerHTML = "<span>◆</span> ";
+        level.append(document.createTextNode(`Level ${entry.level}`));
+        const score = document.createElement("div");
+        score.className = "score";
+        score.textContent = `${Number(entry.score).toLocaleString()} pts`;
+        row.append(rank, player, level, score);
+        return row;
+      });
+      playerList.replaceChildren(...rows);
+      emptyState.style.display = visible.length === 0 ? "block" : "none";
+      emptyState.textContent = entries.length === 0
+        ? "No completed games yet. Finish the maze to claim the first place."
+        : "No adventurers match that search.";
+    }
+
+    async function loadLeaderboard() {
+      emptyState.style.display = "block";
+      emptyState.textContent = "Loading scores from the maze…";
+      try {
+        const response = await fetch(`${apiUrl}/api/leaderboard?period=${period}`);
+        if (!response.ok) throw new Error(`Server returned ${response.status}`);
+        const data = await response.json();
+        entries = Array.isArray(data.entries) ? data.entries : [];
+        renderEntries();
+      } catch (error) {
+        entries = [];
+        podium.replaceChildren();
+        playerList.replaceChildren();
+        emptyState.style.display = "block";
+        emptyState.textContent = "Scores could not load right now. Please refresh in a moment.";
+        console.error("Unable to load leaderboard:", error);
+      }
+    }
+
+    periodButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        period = button.dataset.period;
+        periodButtons.forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+        loadLeaderboard();
+      });
+    });
+    search.addEventListener("input", renderEntries);
+    loadLeaderboard();
+  </script>
 </body>
 </html>

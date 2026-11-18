@@ -6,15 +6,40 @@ The maps and their gameplay coordinates are defined near the top of this file;
 the drawing helpers and main game loop follow them.
 """
 
+import json
 import math
+import os
 import queue
 import random
 import threading
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import pygame
 
 from cyber_questions import generate_question
+
+
+LEADERBOARD_API_URL = os.environ.get(
+    "LEADERBOARD_API_URL", "https://maze-leaderboard-api.onrender.com"
+).rstrip("/")
+
+
+def submit_finished_score(player_name, score):
+    """Send one completed run to the hosted leaderboard API."""
+    request = Request(
+        f"{LEADERBOARD_API_URL}/api/scores",
+        data=json.dumps({"name": player_name, "score": score}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=8) as response:
+            if response.status not in (200, 201):
+                print(f"Leaderboard rejected the score (HTTP {response.status}).")
+    except (HTTPError, URLError, TimeoutError, OSError) as error:
+        print(f"Could not submit score to the leaderboard: {error}")
 
 
 CELL_SIZE = 25
@@ -2154,6 +2179,12 @@ def main():
                         speed_bonus = 100 if elapsed_ms <= 105_000 else 50 if elapsed_ms < 135_000 else 25
                         score += speed_bonus
                         game_finished = True
+                        threading.Thread(
+                            target=submit_finished_score,
+                            args=(player_name, score),
+                            name="leaderboard-score-submit",
+                            daemon=True,
+                        ).start()
                         begin_level_transition(
                             "Game Finished!",
                             quiz_reason=f"Level 5 complete — {speed_bonus} speed bonus points",
