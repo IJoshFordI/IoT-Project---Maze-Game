@@ -2719,11 +2719,11 @@ def main():
                 screen.blit(answer_hint, answer_hint.get_rect(center=(panel.centerx, panel.bottom - 26)))
                 lines = []
             elif quiz_phase == "loading":
-                lines = [f"Generating a {quiz_difficulty.lower()} question with Ollama...", "Please wait"]
+                lines = [f"Generating a {quiz_difficulty.lower()} question"]
             elif quiz_phase == "error":
                 lines = [
                     "Could not generate a question.",
-                    question_generation_errors.get(quiz_difficulty, "Ollama did not return a question."),
+                    question_generation_errors.get(quiz_difficulty, "Unable to generate a question."),
                     "Press R or ENTER to retry",
                 ]
             elif quiz_phase in ("result", "retry_result"):
