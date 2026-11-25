@@ -1,7 +1,5 @@
 """A Pygame maze adventure with five connected levels and cave side areas.
 
-Controls: use WASD to move and E to interact with nearby objects. Number keys
-select a level directly, which is useful for exploring and debugging the game.
 The maps and their gameplay coordinates are defined near the top of this file;
 the drawing helpers and main game loop follow them.
 """
@@ -12,6 +10,7 @@ import os
 import queue
 import random
 import threading
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -24,6 +23,12 @@ from cyber_questions import generate_question
 LEADERBOARD_API_URL = os.environ.get(
     "LEADERBOARD_API_URL", "https://maze-leaderboard-api.onrender.com"
 ).rstrip("/")
+GAME_TIME_PAUSED_MS = 0
+
+
+def game_ticks():
+    """Return game time excluding time spent in the pause menu."""
+    return pygame.time.get_ticks() - GAME_TIME_PAUSED_MS
 
 
 def submit_finished_score(player_name, score):
@@ -34,12 +39,24 @@ def submit_finished_score(player_name, score):
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    try:
-        with urlopen(request, timeout=8) as response:
-            if response.status not in (200, 201):
-                print(f"Leaderboard rejected the score (HTTP {response.status}).")
-    except (HTTPError, URLError, TimeoutError, OSError) as error:
-        print(f"Could not submit score to the leaderboard: {error}")
+    last_error = None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=45) as response:
+                if response.status in (200, 201):
+                    return
+                last_error = RuntimeError(f"Leaderboard returned HTTP {response.status}.")
+        except HTTPError as error:
+            if error.code != 429 and error.code < 500:
+                print(f"Leaderboard rejected the score (HTTP {error.code}).")
+                return
+            last_error = error
+        except (URLError, TimeoutError, OSError) as error:
+            last_error = error
+
+        if attempt < 2:
+            time.sleep(2 ** attempt)
+    print(f"Could not submit score to the leaderboard after three attempts: {last_error}")
 
 
 CELL_SIZE = 25
@@ -622,7 +639,7 @@ def draw_maze(
                 gate_started_at = gate_slide_started_at if is_level_three_gate else None
                 is_gate = is_level_three_gate
                 if is_gate and gate_started_at is not None:
-                    elapsed = pygame.time.get_ticks() - gate_started_at
+                    elapsed = game_ticks() - gate_started_at
                     slide = min(CELL_SIZE, int(CELL_SIZE * elapsed / GATE_SLIDE_DURATION))
                     if slide >= CELL_SIZE:
                         continue
@@ -987,7 +1004,7 @@ def draw_boulder_trap(screen, path, started_at, speed, rubble_tile, offset_x=0, 
     """Draw an activated boulder, its impact burst, or its lasting rubble."""
     if started_at is None:
         return
-    elapsed_ms = pygame.time.get_ticks() - started_at
+    elapsed_ms = game_ticks() - started_at
     boulder_position = get_boulder_position(path, elapsed_ms, speed, offset_x, offset_y)
     if boulder_position is not None:
         draw_rolling_boulder(screen, *boulder_position)
@@ -1545,7 +1562,13 @@ def wrap_text_lines(text, font, max_width):
 
 
 def main():
+    global GAME_TIME_PAUSED_MS
     pygame.init()
+    pygame.joystick.init()
+    controller = None
+    if pygame.joystick.get_count() > 0:
+        controller = pygame.joystick.Joystick(0)
+        controller.init()
     pygame.key.set_repeat(180, PLAYER_KEY_REPEAT_INTERVAL_MS)
     display_surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
     display_width, display_height = display_surface.get_size()
@@ -1588,7 +1611,14 @@ def main():
     score_font_cache = {}
     pygame.display.set_caption("Arcade Maze")
     clock = pygame.time.Clock()
+    last_controller_move_at = 0
     running = True
+    pause_menu = False
+    pause_selection = 0
+    paused_background = None
+    pause_started_at = None
+    last_pause_input_at = 0
+    restart_requested = False
     name_entry = True
     how_to_play_screen = False
     player_name = ""
@@ -1695,7 +1725,7 @@ def main():
 
     def begin_level_transition(title, quiz_reason=None):
         nonlocal level_transition_started_at, level_transition_title, pending_quiz_reason
-        level_transition_started_at = pygame.time.get_ticks()
+        level_transition_started_at = game_ticks()
         level_transition_title = title
         if quiz_reason is not None:
             pending_quiz_reason = quiz_reason
@@ -1708,7 +1738,7 @@ def main():
         quiz_difficulty = ""
         quiz_feedback = ""
         quiz_selected_option = 0
-        quiz_started_at = pygame.time.get_ticks()
+        quiz_started_at = game_ticks()
         quiz_question = None
 
     def choose_quiz_difficulty(difficulty):
@@ -1741,7 +1771,7 @@ def main():
         nonlocal boulder_started_at, upper_left_boulder_started_at
         nonlocal level_four_boulder_started_at, axes_started_at
         nonlocal east_arrows_last_fired_at, east_arrows_last_updated_at
-        paused_ms = pygame.time.get_ticks() - quiz_started_at if quiz_started_at is not None else 0
+        paused_ms = game_ticks() - quiz_started_at if quiz_started_at is not None else 0
         # Keep timed hazards paused while the modal question flow is open.
         if boulder_started_at is not None:
             boulder_started_at += paused_ms
@@ -1756,13 +1786,13 @@ def main():
         if east_arrows_last_updated_at is not None:
             east_arrows_last_updated_at += paused_ms
         if level == 2 and quiz_reason.startswith("Level 1 complete"):
-            level_two_started_at = pygame.time.get_ticks()
+            level_two_started_at = game_ticks()
         if level == 3 and quiz_reason.startswith("Level 2 complete"):
-            level_three_started_at = pygame.time.get_ticks()
+            level_three_started_at = game_ticks()
         if level == 4 and quiz_reason.startswith("Level 3 complete"):
-            level_four_started_at = pygame.time.get_ticks()
+            level_four_started_at = game_ticks()
         if level == 5 and quiz_reason.startswith("Level 4 complete"):
-            level_five_started_at = pygame.time.get_ticks()
+            level_five_started_at = game_ticks()
         quiz_phase = None
         quiz_started_at = None
 
@@ -1771,7 +1801,7 @@ def main():
         nonlocal death_animation_last_update_at, death_animation_world_time
         if death_animation_type is None:
             death_animation_type = "universal"
-            death_animation_started_at = pygame.time.get_ticks()
+            death_animation_started_at = game_ticks()
             death_animation_last_update_at = death_animation_started_at
             death_animation_world_time = death_animation_started_at
 
@@ -1816,15 +1846,76 @@ def main():
         death_animation_started_at = None
         death_animation_last_update_at = None
         death_animation_world_time = None
-        last_move_at = pygame.time.get_ticks()
+        last_move_at = game_ticks()
         pygame.display.set_caption(f"Arcade Maze - Level {level}")
         begin_level_transition("You Died", quiz_reason="Player died")
 
+    def resume_from_pause():
+        nonlocal pause_menu, paused_background, pause_started_at
+        global GAME_TIME_PAUSED_MS
+        if pause_started_at is not None:
+            GAME_TIME_PAUSED_MS += pygame.time.get_ticks() - pause_started_at
+        pause_started_at = None
+        pause_menu = False
+        paused_background = None
+
     while running:
+        if pause_menu:
+            for event in pygame.event.get():
+                if event.type == pygame.JOYBUTTONDOWN and event.button == 0:
+                    event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_e)
+                elif event.type == pygame.JOYBUTTONDOWN and event.button == 1:
+                    event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q)
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_q, pygame.K_ESCAPE):
+                        resume_from_pause()
+                    elif event.key in (pygame.K_w, pygame.K_UP):
+                        pause_selection = (pause_selection - 1) % 3
+                    elif event.key in (pygame.K_s, pygame.K_DOWN):
+                        pause_selection = (pause_selection + 1) % 3
+                    elif event.key == pygame.K_e:
+                        if pause_selection == 0:
+                            resume_from_pause()
+                        elif pause_selection == 1:
+                            restart_requested = True
+                            running = False
+                        else:
+                            running = False
+
+            if controller is not None and controller.get_init():
+                axis_y = controller.get_axis(1) if controller.get_numaxes() > 1 else 0
+                now = pygame.time.get_ticks()
+                if abs(axis_y) > 0.5 and now - last_pause_input_at >= 220:
+                    pause_selection = (pause_selection + (1 if axis_y > 0 else -1)) % 3
+                    last_pause_input_at = now
+
+            if not running:
+                break
+            if not pause_menu:
+                continue
+
+            display_surface.blit(paused_background, (0, 0))
+            shade = pygame.Surface(display_surface.get_size(), pygame.SRCALPHA)
+            shade.fill((0, 0, 0, 185))
+            display_surface.blit(shade, (0, 0))
+            pause_title_font = pygame.font.Font(None, max(44, display_height // 12))
+            pause_option_font = pygame.font.Font(None, max(32, display_height // 22))
+            title_surface = pause_title_font.render("PAUSED", True, (255, 211, 139))
+            display_surface.blit(title_surface, title_surface.get_rect(center=(display_width // 2, display_height // 2 - 100)))
+            for index, label in enumerate(("Resume", "Restart Game", "Exit Game")):
+                color = (255, 235, 195) if index == pause_selection else (190, 177, 158)
+                option_surface = pause_option_font.render(label, True, color)
+                display_surface.blit(option_surface, option_surface.get_rect(center=(display_width // 2, display_height // 2 - 20 + index * 58)))
+            pygame.display.flip()
+            clock.tick(60)
+            continue
+
         # Keep the exact hazard that caused the collision visible in its impact
         # pose for the duration of the death animation.
         if death_animation_type is not None and death_animation_last_update_at is not None:
-            now = pygame.time.get_ticks()
+            now = game_ticks()
             frozen_ms = now - death_animation_last_update_at
             if boulder_started_at is not None:
                 boulder_started_at += frozen_ms
@@ -1839,7 +1930,7 @@ def main():
         if (
             death_animation_type is not None
             and death_animation_started_at is not None
-            and pygame.time.get_ticks() - death_animation_started_at >= 1350
+            and game_ticks() - death_animation_started_at >= 1350
         ):
             reset_after_death()
 
@@ -1856,9 +1947,38 @@ def main():
             elif generation_error:
                 quiz_phase = "error"
 
-        for event in pygame.event.get():
+        events = list(pygame.event.get())
+        # The arcade encoder presents itself as an Xbox-style controller.
+        # Translate its first button to E, and its left stick to WASD so the
+        # existing keyboard-driven menus and game logic work unchanged.
+        for event in events:
+            if event.type == pygame.JOYBUTTONDOWN and event.button == 0:
+                events.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_e))
+            elif event.type == pygame.JOYBUTTONDOWN and event.button == 1:
+                events.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q))
+
+        if controller is not None and controller.get_init():
+            axis_x = controller.get_axis(0) if controller.get_numaxes() > 0 else 0
+            axis_y = controller.get_axis(1) if controller.get_numaxes() > 1 else 0
+            controller_key = None
+            if abs(axis_x) > 0.5 or abs(axis_y) > 0.5:
+                if abs(axis_x) > abs(axis_y):
+                    controller_key = pygame.K_d if axis_x > 0 else pygame.K_a
+                else:
+                    controller_key = pygame.K_s if axis_y > 0 else pygame.K_w
+            now = game_ticks()
+            if controller_key is not None and now - last_controller_move_at >= PLAYER_KEY_REPEAT_INTERVAL_MS:
+                events.append(pygame.event.Event(pygame.KEYDOWN, key=controller_key))
+                last_controller_move_at = now
+
+        for event in events:
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_q and not name_entry and not how_to_play_screen:
+                pause_menu = True
+                pause_selection = 0
+                pause_started_at = pygame.time.get_ticks()
+                continue
             elif event.type == pygame.KEYDOWN and death_animation_type is not None:
                 continue
             elif event.type == pygame.KEYDOWN and name_entry:
@@ -1901,7 +2021,7 @@ def main():
             elif event.type == pygame.KEYDOWN and how_to_play_screen:
                 if event.key in (pygame.K_e, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                     how_to_play_screen = False
-                    level_one_started_at = pygame.time.get_ticks()
+                    level_one_started_at = game_ticks()
             elif event.type == pygame.KEYDOWN and (
                 level_transition_started_at is not None
                 or (game_finished and quiz_phase is None)
@@ -1946,18 +2066,18 @@ def main():
                             quiz_phase = "retry_result"
                         queue_question_generation(quiz_difficulty)
                     quiz_selected_option = row * 2 + column
-                elif quiz_phase == "error" and event.key in (pygame.K_r, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                elif quiz_phase == "error" and event.key in (pygame.K_e, pygame.K_r, pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                     with question_cache_lock:
                         question_generation_errors.pop(quiz_difficulty, None)
                     quiz_phase = "loading"
                     queue_question_generation(quiz_difficulty)
-                elif quiz_phase == "retry_result" and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                elif quiz_phase == "retry_result" and event.key == pygame.K_e:
                     quiz_phase = "difficulty"
                     quiz_difficulty = ""
                     quiz_question = None
                     quiz_selected_option = 0
                     quiz_feedback = ""
-                elif quiz_phase == "result" and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                elif quiz_phase == "result" and event.key == pygame.K_e:
                     close_quiz()
             # Number keys are direct level selectors. Each branch sets up the
             # selected map and resets the puzzle state needed for that area.
@@ -1972,14 +2092,14 @@ def main():
                 maze = generate_new_maze()
                 player_row = START_ROW
                 player_column = START_COLUMN
-                level_two_started_at = pygame.time.get_ticks()
+                level_two_started_at = game_ticks()
                 pygame.display.set_caption(f"Arcade Maze - Level {level}")
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_3:
                 level = 3
                 maze = LEVEL_THREE_MAZE.copy()
                 player_row = LEVEL_THREE_START_ROW
                 player_column = LEVEL_THREE_START_COLUMN
-                level_three_started_at = pygame.time.get_ticks()
+                level_three_started_at = game_ticks()
                 player_facing = (-1, 0)
                 buttons = [dict(button, pressed=False) for button in LEVEL_THREE_BUTTONS]
                 gate_slide_started_at = None
@@ -1989,7 +2109,7 @@ def main():
                 maze = LEVEL_FOUR_MAZE.copy()
                 player_row = START_ROW
                 player_column = START_COLUMN
-                level_four_started_at = pygame.time.get_ticks()
+                level_four_started_at = game_ticks()
                 player_facing = (-1, 0)
                 buttons = []
                 gate_slide_started_at = None
@@ -2004,7 +2124,7 @@ def main():
                 maze = LEVEL_FIVE_MAZE.copy()
                 player_row = LEVEL_FIVE_START_ROW
                 player_column = LEVEL_FIVE_START_COLUMN
-                level_five_started_at = pygame.time.get_ticks()
+                level_five_started_at = game_ticks()
                 player_facing = (-1, 0)
                 buttons = []
                 torches = []
@@ -2064,7 +2184,7 @@ def main():
                         ):
                             button["pressed"] = True
                             if all(item["pressed"] for item in buttons) and gate_slide_started_at is None:
-                                gate_slide_started_at = pygame.time.get_ticks()
+                                gate_slide_started_at = game_ticks()
                             break
                 elif level == 4:
                     if carrying_torch:
@@ -2099,7 +2219,7 @@ def main():
                 gate_is_open = (
                     level == 3
                     and gate_slide_started_at is not None
-                    and pygame.time.get_ticks() - gate_slide_started_at >= GATE_SLIDE_DURATION
+                    and game_ticks() - gate_slide_started_at >= GATE_SLIDE_DURATION
                 )
                 pillar_blocked = level == 4 and (next_row, next_column) in LEVEL_FOUR_PILLARS
                 rock_blocked = level == 5 and (next_row, next_column) in LEVEL_FIVE_ROCKS
@@ -2113,14 +2233,14 @@ def main():
                     previous_position = (player_row, player_column)
                     player_row = next_row
                     player_column = next_column
-                    last_move_at = pygame.time.get_ticks()
+                    last_move_at = game_ticks()
                     # Only successful moves can start a trap or collect a relic.
                     if (
                         level == 8
                         and (player_row, player_column) == LEVEL_FIVE_EAST_ARROW_PRESSURE_PLATE_TILE
                         and east_arrows_last_fired_at is None
                     ):
-                        east_arrows_last_updated_at = pygame.time.get_ticks()
+                        east_arrows_last_updated_at = game_ticks()
                         east_arrows_last_fired_at = (
                             east_arrows_last_updated_at - LEVEL_FIVE_EAST_ARROW_INTERVAL_MS
                         )
@@ -2129,25 +2249,25 @@ def main():
                         and (player_row, player_column) == LEVEL_FOUR_PRESSURE_PLATE_TILE
                         and level_four_boulder_started_at is None
                     ):
-                        level_four_boulder_started_at = pygame.time.get_ticks()
+                        level_four_boulder_started_at = game_ticks()
                     elif (
                         level == 5
                         and (player_row, player_column) == LEVEL_FIVE_PRESSURE_PLATE_TILE
                         and boulder_started_at is None
                     ):
-                        boulder_started_at = pygame.time.get_ticks()
+                        boulder_started_at = game_ticks()
                     elif (
                         level == 5
                         and (player_row, player_column) == LEVEL_FIVE_UPPER_LEFT_PRESSURE_PLATE_TILE
                         and upper_left_boulder_started_at is None
                     ):
-                        upper_left_boulder_started_at = pygame.time.get_ticks()
+                        upper_left_boulder_started_at = game_ticks()
                     if (
                         level == 5
                         and (player_row, player_column) == LEVEL_FIVE_AXE_PRESSURE_PLATE_TILE
                         and axes_started_at is None
                     ):
-                        axes_started_at = pygame.time.get_ticks()
+                        axes_started_at = game_ticks()
                     if carrying_cave_artifact is None:
                         if (
                             level == 7
@@ -2173,7 +2293,7 @@ def main():
                         and len(placed_cave_artifacts) == len(LEVEL_FIVE_ROCKS)
                     ):
                         elapsed_ms = (
-                            pygame.time.get_ticks() - level_five_started_at
+                            game_ticks() - level_five_started_at
                             if level_five_started_at is not None else 0
                         )
                         speed_bonus = 100 if elapsed_ms <= 105_000 else 50 if elapsed_ms < 135_000 else 25
@@ -2193,7 +2313,7 @@ def main():
                     # animation so the level change is clear to the player.
                     elif (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 1:
                         elapsed_seconds = (
-                            (pygame.time.get_ticks() - level_one_started_at) / 1000
+                            (game_ticks() - level_one_started_at) / 1000
                             if level_one_started_at is not None else 0
                         )
                         speed_bonus = 100 if elapsed_seconds <= 15 else 50 if elapsed_seconds <= 30 else 25
@@ -2210,7 +2330,7 @@ def main():
                         )
                     elif (player_row, player_column) == (EXIT_ROW, LEVEL_TWO_EXIT_COLUMN) and level == 2:
                         elapsed_seconds = (
-                            (pygame.time.get_ticks() - level_two_started_at) / 1000
+                            (game_ticks() - level_two_started_at) / 1000
                             if level_two_started_at is not None else 0
                         )
                         speed_bonus = 100 if elapsed_seconds <= 15 else 50 if elapsed_seconds <= 30 else 25
@@ -2230,7 +2350,7 @@ def main():
                         )
                     elif (player_row, player_column) == (EXIT_ROW, EXIT_COLUMN) and level == 3:
                         elapsed_seconds = (
-                            (pygame.time.get_ticks() - level_three_started_at) / 1000
+                            (game_ticks() - level_three_started_at) / 1000
                             if level_three_started_at is not None else 0
                         )
                         speed_bonus = 100 if elapsed_seconds <= 35 else 50 if elapsed_seconds <= 60 else 25
@@ -2258,7 +2378,7 @@ def main():
                         and len(lit_pillars) == len(LEVEL_FOUR_PILLARS)
                     ):
                         elapsed_seconds = (
-                            (pygame.time.get_ticks() - level_four_started_at) / 1000
+                            (game_ticks() - level_four_started_at) / 1000
                             if level_four_started_at is not None else 0
                         )
                         speed_bonus = 100 if elapsed_seconds <= 35 else 50 if elapsed_seconds <= 60 else 25
@@ -2335,7 +2455,7 @@ def main():
             and level_transition_started_at is None
             and east_arrows_last_fired_at is not None
         ):
-            now = pygame.time.get_ticks()
+            now = game_ticks()
             while now - east_arrows_last_fired_at >= LEVEL_FIVE_EAST_ARROW_INTERVAL_MS:
                 east_arrows_last_fired_at += LEVEL_FIVE_EAST_ARROW_INTERVAL_MS
                 for row, column, direction in LEVEL_FIVE_EAST_ARROW_DISPENSERS:
@@ -2380,7 +2500,7 @@ def main():
                 if started_at is None:
                     continue
                 boulder_position = get_boulder_position(
-                    path, pygame.time.get_ticks() - started_at, speed
+                    path, game_ticks() - started_at, speed
                 )
                 if boulder_position is None:
                     continue
@@ -2389,7 +2509,7 @@ def main():
                     start_death_animation()
                     break
             if axes_started_at is not None:
-                animation_time = pygame.time.get_ticks() / 1000
+                animation_time = game_ticks() / 1000
                 if any(
                     swinging_axe_hits_player(
                         row, column, phase, animation_time, player_x, player_y
@@ -2429,11 +2549,11 @@ def main():
             lit_pillars=lit_pillars if level == 4 else (),
             animation_time=(
                 death_animation_world_time if death_animation_world_time is not None
-                else pygame.time.get_ticks()
+                else game_ticks()
             ) / 1000,
             player_name=player_name if not name_entry and death_animation_type is None else "",
             player_label_font=player_label_font,
-            walking=pygame.time.get_ticks() - last_move_at < 220,
+            walking=game_ticks() - last_move_at < 220,
             warm_cave=level == 5 or small_section,
             classic_cave=level in (1, 2),
             viewport_size=section_view_size,
@@ -2495,12 +2615,12 @@ def main():
             maze_offset_y = (maze_surface.get_height() - len(maze) * CELL_SIZE) // 2
             death_animation_time = (
                 death_animation_world_time if death_animation_world_time is not None
-                else pygame.time.get_ticks()
+                else game_ticks()
             ) / 1000
             character_idle_bob = int(death_animation_time * 2) % 2
             draw_death_animation(
                 maze_surface,
-                pygame.time.get_ticks() - death_animation_started_at,
+                game_ticks() - death_animation_started_at,
                 (
                     maze_offset_x + player_column * CELL_SIZE + 1,
                     maze_offset_y + player_row * CELL_SIZE + 2 - character_idle_bob,
@@ -2511,7 +2631,7 @@ def main():
             screen.blit(pygame.transform.scale(maze_surface, screen.get_size()), (0, 0))
 
         if level_transition_started_at is not None:
-            transition_elapsed = pygame.time.get_ticks() - level_transition_started_at
+            transition_elapsed = game_ticks() - level_transition_started_at
             cover_end = LEVEL_TRANSITION_COVER_DURATION
             hold_end = cover_end + LEVEL_TRANSITION_HOLD_DURATION
             reveal_end = hold_end + LEVEL_TRANSITION_REVEAL_DURATION
@@ -2645,8 +2765,6 @@ def main():
                     detail_surface = pygame.font.Font(None, 24).render(description, True, (218, 203, 185))
                     screen.blit(label_surface, label_surface.get_rect(center=(button.centerx, button.centery - 9)))
                     screen.blit(detail_surface, detail_surface.get_rect(center=(button.centerx, button.centery + 20)))
-                choice_hint = pygame.font.Font(None, 25).render("W A S D choose  ·  E confirm", True, (205, 190, 171))
-                screen.blit(choice_hint, choice_hint.get_rect(center=(panel.centerx, panel.bottom - 23)))
                 lines = []
             elif quiz_phase == "question" and quiz_question:
                 difficulty_label = quiz_body_font.render(
@@ -2746,8 +2864,6 @@ def main():
                             rendered_option.get_rect(center=(card.centerx, option_text_top + line_index * option_font.get_linesize() + option_font.get_linesize() // 2)),
                         )
 
-                answer_hint = quiz_body_font.render("W A S D move  ·  E select", True, (219, 201, 178))
-                screen.blit(answer_hint, answer_hint.get_rect(center=(panel.centerx, panel.bottom - 26)))
                 lines = []
             elif quiz_phase == "loading":
                 lines = [f"Generating a {quiz_difficulty.lower()} question"]
@@ -2755,16 +2871,16 @@ def main():
                 lines = [
                     "Could not generate a question.",
                     question_generation_errors.get(quiz_difficulty, "Unable to generate a question."),
-                    "Press R or ENTER to retry",
+                    "Interact to retry",
                 ]
             elif quiz_phase in ("result", "retry_result"):
                 lines = [quiz_feedback, f"Current score: {score}"]
                 if quiz_question and quiz_question.get("explanation"):
                     lines.append(f"Why: {quiz_question['explanation']}")
                 if quiz_phase == "retry_result":
-                    lines.append("Press ENTER to choose a difficulty and try again")
+                    lines.append("Interact to choose a difficulty and try again")
                 else:
-                    lines.append("Press ENTER to continue")
+                    lines.append("Interact to continue")
             else:
                 lines = []
 
@@ -2859,8 +2975,6 @@ def main():
                     pygame.draw.rect(display_surface, edge, key_rect, width=scaled(1), border_radius=scaled(4))
                     key_surface = name_key_font.render(label, True, (49, 34, 19) if selected else (238, 222, 201))
                     display_surface.blit(key_surface, key_surface.get_rect(center=key_rect.center))
-            hint_surface = name_hint_font.render("W A S D move · E select", True, (226, 205, 177))
-            display_surface.blit(hint_surface, hint_surface.get_rect(center=point(291, 272)))
         elif how_to_play_screen:
             panel_scale = min(
                 (fit_size[0] - 16) / how_to_play_panel.get_width(),
@@ -2892,11 +3006,17 @@ def main():
             pygame.draw.rect(display_surface, (25, 20, 18), score_box, border_radius=7)
             pygame.draw.rect(display_surface, (143, 98, 57), score_box, width=3, border_radius=7)
             display_surface.blit(score_surface, score_surface.get_rect(center=score_box.center))
+        if pause_menu and paused_background is None:
+            paused_background = display_surface.copy()
         pygame.display.flip()
         clock.tick(60)
 
+    if restart_requested:
+        return True
     pygame.quit()
+    return False
 
 
 if __name__ == "__main__":
-    main()
+    while main():
+        pass

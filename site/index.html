@@ -334,6 +334,7 @@
     });
     search.addEventListener("input", renderEntries);
     loadLeaderboard();
+    window.setInterval(loadLeaderboard, 30000);
   </script>
 </body>
 </html>
